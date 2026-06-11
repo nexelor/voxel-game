@@ -9,7 +9,7 @@ void Timer::Update() {
     const auto currentTime = Clock::now();
 
     m_deltaTime = std::chrono::duration<float>(
-        currentTime - m_startTime
+        currentTime - m_lastFrameTime
     ).count();
 
     m_elapsedTime = std::chrono::duration<float>(

@@ -16,6 +16,24 @@ bool Application::Initialize() {
     m_renderer = std::make_unique<Renderer>(m_vulkan.get(), m_window.get());
     m_renderer->Init();
 
+    // Atlas (1×1 white — unlocks drawing)
+    m_atlas = std::make_unique<TextureAtlas>(m_vulkan.get(), m_renderer->GetCommandPool());
+    m_atlas->CreateSolid(255, 255, 255);
+    m_atlas->WriteDescriptorSet(m_renderer->GetTextureDescSet());
+    m_renderer->BindTextureAtlas(m_renderer->GetTextureDescSet());
+
+    // World
+    m_chunkManager = std::make_unique<ChunkManager>(m_vulkan.get(), m_renderer.get());
+    m_chunkManager->Init();
+    m_chunkManager->FlushDirtyMeshes(
+        m_renderer->GetCommandPool(),
+        m_renderer->GetTransferQueue()
+    );
+    m_renderer->SetChunkManager(m_chunkManager.get());
+
+    // Camera
+    m_camera = std::make_unique<Camera>(m_window->GetNativeWindow());
+
     m_running = true;
 
     Logger::Log(LogLevel::Info, "Core", "Initialization complete");
@@ -39,12 +57,26 @@ void Application::Run() {
 void Application::Shutdown() {
     Logger::Log(LogLevel::Info, "Core", "Shutting down");
 
+    // Destroy in reverse construction order.
+    // ChunkManager holds VkBuffers → must die before device.
+    m_chunkManager.reset();
+    m_atlas.reset();
+    m_camera.reset();
     m_renderer.reset();
     m_vulkan.reset();
     m_window.reset();
 }
 
-void Application::Update() {}
+void Application::Update() {
+    m_camera->Update(m_timer.GetDeltaTime());
+ 
+    const float aspect =
+        static_cast<float>(m_window->GetWidth()) /
+        static_cast<float>(m_window->GetHeight());
+ 
+    m_renderer->UpdateCamera(m_camera->GetUBO(aspect));
+}
+
 void Application::Render() {
     m_renderer->DrawFrame();
 }

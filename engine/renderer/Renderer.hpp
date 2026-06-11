@@ -10,6 +10,7 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
+class ChunkManager;
 class Window;
 
 static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -44,6 +45,14 @@ public:
     void DrawFrame();
 
     void UpdateCamera(const CameraUBO& camera);
+
+    VkCommandPool GetCommandPool() const { return m_commandPool; }
+    VkQueue GetTransferQueue() const { return m_context->GetGraphicsQueue(); }
+    VkDescriptorSet GetTextureDescSet() const { return m_textureDescSet; }
+
+    void BindTextureAtlas(VkDescriptorSet atlasSet) { m_textureDescSet = atlasSet; }
+
+    void SetChunkManager(ChunkManager* cm) { m_chunkManager = cm; }
 
 private:
     // Persistent (survive swapchain recreation)
@@ -84,7 +93,8 @@ private:
 private:
     VulkanContext* m_context = nullptr;
     Window* m_window = nullptr;
-
+    ChunkManager* m_chunkManager = nullptr;
+    
     // Swapchain
     std::unique_ptr<Swapchain> m_swapchain;
     

@@ -4,6 +4,9 @@
 #include "VulkanContext.hpp"
 #include "engine/platform/Window.hpp"
 #include "engine/core/Logger.hpp"
+#include "engine/renderer/Shader.hpp"
+#include "engine/renderer/VoxelVertex.hpp"
+#include "engine/world/ChunkManager.hpp"
 
 #include <GLFW/glfw3.h>
 #include <array>
@@ -542,31 +545,27 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 
     // Bind set 1 (texture atlas) — only when it has been written by TextureAtlas.
     // Until then we skip any draw calls to avoid a validation error.
-    if (m_textureDescSet != VK_NULL_HANDLE) {
+    if (m_textureDescSet != VK_NULL_HANDLE && m_chunkManager != nullptr) {
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_voxelPipeline.GetLayout(),
             1, 1, &m_textureDescSet, 0, nullptr);
  
-        // ── Chunk draw loop goes here ─────────
-        // Replace with your ChunkManager iteration once that exists.
-        // Example:
-        //
-        // for (auto& chunk : m_visibleChunks) {
-        //     VoxelPushConstants pc{};
-        //     pc.model     = chunk.GetModelMatrix();
-        //     pc.atlasRows = 16.0f;
-        //     pc.atlasCols = 16.0f;
-        //
-        //     vkCmdPushConstants(cmd,
-        //         m_voxelPipeline.GetLayout(),
-        //         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        //         0, sizeof(VoxelPushConstants), &pc);
-        //
-        //     VkBuffer     vb[]  = { chunk.GetVertexBuffer() };
-        //     VkDeviceSize off[] = { 0 };
-        //     vkCmdBindVertexBuffers(cmd, 0, 1, vb, off);
-        //     vkCmdBindIndexBuffer(cmd, chunk.GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        //     vkCmdDrawIndexed(cmd, chunk.GetIndexCount(), 1, 0, 0, 0);
-        // }
+        for (const auto& chunk : m_chunkManager->GetChunks()) {
+            if (!chunk->HasMesh()) continue;
+
+            VoxelPushConstants pc{};
+            pc.model = chunk->GetModelMatrix();
+            pc.atlasRows = 1.0f;
+            pc.atlasCols = 1.0f;
+
+            vkCmdPushConstants(cmd, m_voxelPipeline.GetLayout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0, sizeof(VoxelPushConstants), &pc);
+            
+            VkBuffer vb[] = { chunk->GetVertexBuffer() };
+            VkDeviceSize off[] = { 0 };
+            vkCmdBindVertexBuffers(cmd, 0, 1, vb, off);
+            vkCmdBindIndexBuffer(cmd, chunk->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, chunk->GetIndexCount(), 1, 0, 0, 0);
+        }
     }
 
     vkCmdEndRenderPass(cmd);
