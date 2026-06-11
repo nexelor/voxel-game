@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceRoot}/build/voxel_game",
             "args": [],
-            "cwd": "${workspaceRoot}"
+            "cwd": "${workspaceRoot}/build"
         }
     ]
 }

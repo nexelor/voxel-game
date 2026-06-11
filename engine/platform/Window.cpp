@@ -42,15 +42,6 @@ bool Window::WasResized() { return m_framebufferResized; }
 void Window::ResetResizeFlag() { m_framebufferResized = false; }
 GLFWwindow* Window::GetNativeWindow() const { return m_window; }
 
-// void Window::FramebufferResizeCallback(GLFWwindow* window, int width, int height) {
-//     auto* currentWindow = static_cast<Window*>(glfwGetWindowUserPointer(window));
-
-//     currentWindow->m_width = width;
-//     currentWindow->m_height = height;
-
-//     currentWindow->m_framebufferResized = true;
-// }
-
 void Window::FramebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 

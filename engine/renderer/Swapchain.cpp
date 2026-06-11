@@ -103,12 +103,6 @@ void Swapchain::CreateSwapchain() {
     auto presentMode = ChoosePresentMode(support.presentModes);
     auto extent = ChooseExtent(support.capabilities);
 
-    // uint32_t imageCount = support.capabilities.minImageCount + 1;
-
-    // if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount) {
-    //     imageCount = support.capabilities.maxImageCount;
-    // }
-
     uint32_t imageCount = MAX_FRAMES_IN_FLIGHT;
     
     if (support.capabilities.minImageCount > imageCount)
