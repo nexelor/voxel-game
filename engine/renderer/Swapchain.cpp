@@ -2,6 +2,7 @@
 
 #include "VulkanContext.hpp"
 #include "engine/platform/Window.hpp"
+#include "Renderer.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -102,11 +103,19 @@ void Swapchain::CreateSwapchain() {
     auto presentMode = ChoosePresentMode(support.presentModes);
     auto extent = ChooseExtent(support.capabilities);
 
-    uint32_t imageCount = support.capabilities.minImageCount + 1;
+    // uint32_t imageCount = support.capabilities.minImageCount + 1;
 
-    if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount) {
+    // if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount) {
+    //     imageCount = support.capabilities.maxImageCount;
+    // }
+
+    uint32_t imageCount = MAX_FRAMES_IN_FLIGHT;
+    
+    if (support.capabilities.minImageCount > imageCount)
+        imageCount = support.capabilities.minImageCount;
+    
+    if (support.capabilities.maxImageCount > 0 && imageCount > support.capabilities.maxImageCount)
         imageCount = support.capabilities.maxImageCount;
-    }
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
