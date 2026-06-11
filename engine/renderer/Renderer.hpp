@@ -1,8 +1,6 @@
 #pragma once
 
 #include "engine/renderer/GraphicsPipeline.hpp"
-#include "engine/renderer/Shader.hpp"
-#include "engine/renderer/VoxelVertex.hpp"
 #include "engine/renderer/VulkanContext.hpp"
 #include "Swapchain.hpp"
 
