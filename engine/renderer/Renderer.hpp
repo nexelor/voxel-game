@@ -1,0 +1,56 @@
+#pragma once
+
+#include "engine/renderer/VulkanContext.hpp"
+#include <memory>
+#include <vulkan/vulkan_core.h>
+
+class Swapchain;
+class VulkanContext;
+class Window;
+
+class Renderer {
+public:
+    Renderer(VulkanContext* context, Window* window);
+    ~Renderer();
+
+    void Init();
+    void Cleanup();
+
+    void DrawFrame();
+
+private:
+    void CreateRenderPass();
+
+    void CreateFramebuffers();
+
+    void CreateCommandPool();
+
+    void CreateCommandBuffers();
+
+    void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+    void CreateSyncObjects();
+
+    void RecreateSwapchain();
+
+    void CleanupSwapchain();
+
+    void CreateSwapchainResources();
+
+private:
+    VulkanContext* m_context = nullptr;
+    Window* m_window = nullptr;
+
+    std::unique_ptr<Swapchain> m_swapchain;
+    VkRenderPass m_renderPass = VK_NULL_HANDLE;
+
+    std::vector<VkFramebuffer> m_framebuffers;
+    
+    VkCommandPool m_commandPool = VK_NULL_HANDLE;
+
+    std::vector<VkCommandBuffer> m_commandBuffers;
+
+    VkSemaphore m_imageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore m_renderFinishedSemaphore = VK_NULL_HANDLE;
+    VkFence m_inFlightFence = VK_NULL_HANDLE;
+};

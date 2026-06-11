@@ -8,11 +8,10 @@ project(
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(Vulkan REQUIRED)
 
 file(GLOB_RECURSE SOURCES
     src/*.cpp
@@ -26,8 +25,8 @@ target_include_directories(voxel_game PRIVATE
 )
 
 target_link_libraries(voxel_game PRIVATE
-    Vulkan::Vulkan
     glfw
+    Vulkan::Vulkan
 )
 
 target_compile_options(voxel_game PRIVATE

@@ -10,12 +10,25 @@ public:
 
     ~Window();
 
-    bool ShoudClose() const;
-
     void PollEvent();
 
+    bool ShoudClose() const;
+
+    int GetWidth() const;
+    int GetHeight() const;
+
+    bool WasResized();
     GLFWwindow* GetNativeWindow() const;
+    void ResetResizeFlag();
+
+private:
+    static void FramebufferResizeCallback(GLFWwindow* window, int width, int height);
 
 private:
     GLFWwindow* m_window = nullptr;
+
+    int m_width;
+    int m_height;
+
+    bool m_framebufferResized = false;
 };
