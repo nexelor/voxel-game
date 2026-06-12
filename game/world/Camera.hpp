@@ -43,7 +43,7 @@ public:
 private:
     GLFWwindow* m_window;
 
-    glm::vec3 m_position { 16.f, 10.f, 16.f };
+    glm::vec3 m_position { 16.f, 132.f, 16.f };
     float m_yaw { -90.0f };  // looking toward -Z (north)
     float m_pitch {  -20.0f };
 

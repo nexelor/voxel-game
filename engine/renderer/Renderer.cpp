@@ -1,12 +1,12 @@
-#include "Renderer.hpp"
+#include "engine/renderer/Renderer.hpp"
 
-#include "Swapchain.hpp"
-#include "VulkanContext.hpp"
+#include "engine/renderer/Swapchain.hpp"
+#include "engine/renderer/VulkanContext.hpp"
 #include "engine/platform/Window.hpp"
 #include "engine/core/Logger.hpp"
 #include "engine/renderer/Shader.hpp"
 #include "engine/renderer/VoxelVertex.hpp"
-#include "engine/world/ChunkManager.hpp"
+#include "game/world/ChunkManager.hpp"
 
 #include <GLFW/glfw3.h>
 #include <array>

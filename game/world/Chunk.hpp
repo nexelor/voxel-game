@@ -1,6 +1,6 @@
 #pragma once
  
-#include "Block.hpp"
+#include "game/world/Block.hpp"
 #include "engine/renderer/VoxelVertex.hpp"
  
 #include <array>

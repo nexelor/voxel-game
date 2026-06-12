@@ -17,6 +17,8 @@ find_package(glm REQUIRED)
 file(GLOB_RECURSE SOURCES
     src/*.cpp
     engine/*.cpp
+    game/*cpp
+    # content/*cpp
 )
 
 add_executable(voxel_game ${SOURCES})

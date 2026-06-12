@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Chunk.hpp"
-#include "ChunkMesh.hpp"
+#include "game/world/Chunk.hpp"
+#include "game/world/ChunkMesh.hpp"
 
 #include <memory>
 #include <vulkan/vulkan.h>
@@ -13,8 +13,7 @@ class Renderer;
 //  glm::ivec3 hash  (needed for the chunk map)
 // ─────────────────────────────────────────────
  
-struct IVec3Hash
-{
+struct IVec3Hash {
     std::size_t operator()(const glm::ivec3& v) const noexcept
     {
         // Combine three ints with a Fibonacci-mixing constant so
@@ -31,8 +30,7 @@ struct IVec3Hash
 //  RaycastResult
 // ─────────────────────────────────────────────
  
-struct RaycastResult
-{
+struct RaycastResult {
     bool hit = false;
     glm::ivec3 blockPos {};   // world-space coords of the hit block
     glm::ivec3 faceNormal {};   // outward normal of the entered face
@@ -58,20 +56,6 @@ struct RaycastResult
 //    if (hit) SetBlock(hit.blockPos, Air)           // break
 //    if (hit) SetBlock(hit.blockPos+hit.faceNormal, Stone) // place
 //    // dirty flag is set automatically; next Update() uploads mesh
-// ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
-//  ChunkManager
-//
-//  Owns all loaded chunks.  For now it just
-//  creates a single test chunk full of blocks
-//  so you can see geometry on screen.
-//
-//  The draw loop is driven by Renderer calling
-//  DrawChunks() from inside RecordCommandBuffer.
-//  Since the renderer owns the command buffer we
-//  pass the pipeline layout so the manager can
-//  push constants itself.
 // ─────────────────────────────────────────────
 
 class ChunkManager {
@@ -100,6 +84,10 @@ public:
     // Exposed so Application can call after block edits between frames
     ChunkNeighbors GatherNeighbors(glm::ivec3 chunkCoord) const;
 
+    static constexpr int WORLD_HEIGHT_CHUNKS = 16;   // 16 * 32 = 512 blocks
+    static constexpr int SEA_LEVEL           = 128;
+    static constexpr int SEA_LEVEL_CHUNK     = SEA_LEVEL / CHUNK_SIZE; // = 4
+
 private:
     // Coord conversions
     static glm::ivec3 WorldToChunkCoord(glm::ivec3 worldPos);
@@ -110,7 +98,7 @@ private:
 
     void GenerateChunk(Chunk& chunk, glm::ivec3 chunkCoord) const;
     void RebuildMesh (Chunk& chunk, VkCommandPool pool, VkQueue queue);
-    void FlushDirty (VkCommandPool pool, VkQueue queue);
+    void FlushDirty (int camChunkY, VkCommandPool pool, VkQueue queue);
 
     VulkanContext* m_context = nullptr;
     Renderer* m_renderer = nullptr;

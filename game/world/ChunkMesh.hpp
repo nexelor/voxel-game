@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Chunk.hpp"
+#include "game/world/Chunk.hpp"
 #include "engine/renderer/VoxelVertex.hpp"
 
 #include <vector>

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Timer.hpp"
+#include "engine/core/Timer.hpp"
 #include "engine/platform/Window.hpp"
 #include "engine/renderer/Renderer.hpp"
 #include "engine/renderer/TextureAtlas.hpp"
 #include "engine/renderer/VulkanContext.hpp"
-#include "engine/world/Camera.hpp"
-#include "engine/world/ChunkManager.hpp"
+#include "game/world/Camera.hpp"
+#include "game/world/ChunkManager.hpp"
 #include <memory>
 
 class Application {

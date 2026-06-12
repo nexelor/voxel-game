@@ -1,4 +1,4 @@
-#include "Camera.hpp"
+#include "game/world/Camera.hpp"
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>

@@ -1,9 +1,14 @@
-#include "ChunkManager.hpp"
+#include "game/world/ChunkManager.hpp"
 #include "engine/renderer/Renderer.hpp"
 #include "engine/renderer/VulkanContext.hpp"
 #include "engine/core/Logger.hpp"
-#include "engine/world/Chunk.hpp"
-#include "engine/world/ChunkMesh.hpp"
+#include "game/world/Chunk.hpp"
+#include "game/world/ChunkMesh.hpp"
+#include <algorithm>
+#include <cstdlib>
+
+// At the top, add:
+static constexpr int VERTICAL_RENDER_DISTANCE = 3; // slabs above/below camera chunk
 
 // ─────────────────────────────────────────────
 //  Coordinate helpers
@@ -53,15 +58,16 @@ void ChunkManager::Init(VkCommandPool pool, VkQueue queue) {
     // Update() will expand this as the camera moves.
     constexpr int SEED_RADIUS = 4;
     for (int cz = -SEED_RADIUS; cz <= SEED_RADIUS; ++cz)
-        for (int cx = -SEED_RADIUS; cx <= SEED_RADIUS; ++cx) {
-            glm::ivec3 coord{ cx, 0, cz };
-            auto chunk = std::make_unique<Chunk>();
-            chunk->m_chunkCoord = coord;
-            GenerateChunk(*chunk, coord);
-            m_chunks.emplace(coord, std::move(chunk));
-        }
+        for (int cx = -SEED_RADIUS; cx <= SEED_RADIUS; ++cx)
+            for (int cy = 0; cy < WORLD_HEIGHT_CHUNKS; ++cy) {
+                glm::ivec3 coord{ cx, cy, cz };
+                auto chunk = std::make_unique<Chunk>();
+                chunk->m_chunkCoord = coord;
+                GenerateChunk(*chunk, coord);
+                m_chunks.emplace(coord, std::move(chunk));
+            }
  
-    FlushDirty(pool, queue);
+    FlushDirty(SEA_LEVEL_CHUNK, pool, queue);
     Logger::Log(LogLevel::Info, "World", "Initial chunks generated and uploaded");
 }
 
@@ -70,33 +76,34 @@ void ChunkManager::Init(VkCommandPool pool, VkQueue queue) {
 // ─────────────────────────────────────────────
 
 void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandPool pool, VkQueue queue) {
-    // Camera's XZ chunk coordinate (Y always 0 - we only have one slab layer)
-    const glm::ivec3 camChunk {
-        FloorDiv(static_cast<int>(std::floor(cameraWorldPos.x)), CHUNK_SIZE),
-        0,
-        FloorDiv(static_cast<int>(std::floor(cameraWorldPos.z)), CHUNK_SIZE)
-    };
+    const int camChunkX = FloorDiv(static_cast<int>(std::floor(cameraWorldPos.x)), CHUNK_SIZE);
+    const int camChunkY = std::clamp(
+        FloorDiv(static_cast<int>(std::floor(cameraWorldPos.y)), CHUNK_SIZE),
+        0, WORLD_HEIGHT_CHUNKS - 1
+    );
+    const int camChunkZ = FloorDiv(static_cast<int>(std::floor(cameraWorldPos.z)), CHUNK_SIZE);
 
-    // Load missing chunks inside radius
+    // Load missing chunks — full Y column for every XZ position in radius
     const int r = viewRadiusXZ;
     for (int dz = -r; dz <= r; ++dz)
     for (int dx = -r; dx <= r; ++dx) {
-        if (dx*dx + dz*dz > r*r) continue;   // circular radius
-        glm::ivec3 coord { camChunk.x + dx, 0, camChunk.z + dz };
-        if (m_chunks.count(coord)) continue;
- 
-        auto chunk = std::make_unique<Chunk>();
-        chunk->m_chunkCoord = coord;
-        GenerateChunk(*chunk, coord);
-        m_chunks.emplace(coord, std::move(chunk));
+        if (dx*dx + dz*dz > r*r) continue;
+        for (int cy = 0; cy < WORLD_HEIGHT_CHUNKS; ++cy) {
+            glm::ivec3 coord { camChunkX + dx, cy, camChunkZ + dz };
+            if (m_chunks.count(coord)) continue;
+            auto chunk = std::make_unique<Chunk>();
+            chunk->m_chunkCoord = coord;
+            GenerateChunk(*chunk, coord);
+            m_chunks.emplace(coord, std::move(chunk));
+        }
     }
 
-    // Unload chunks beyond radius + margin
+    // Unload XZ columns beyond radius + margin (unload all Y slabs for that column)
     const int unloadR = r + 2;
     std::vector<glm::ivec3> toRemove;
     for (auto& [coord, _] : m_chunks) {
-        int dx = coord.x - camChunk.x;
-        int dz = coord.z - camChunk.z;
+        int dx = coord.x - camChunkX;
+        int dz = coord.z - camChunkZ;
         if (dx*dx + dz*dz > unloadR*unloadR)
             toRemove.push_back(coord);
     }
@@ -106,21 +113,60 @@ void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandP
             m_chunks[coord]->DestroyBuffers(dev);
             m_chunks.erase(coord);
         }
-        Logger::Log(LogLevel::Info, "World", "Unloaded " + std::to_string(toRemove.size()) + " chunk(s)");
+        Logger::Log(LogLevel::Info, "World",
+            "Unloaded " + std::to_string(toRemove.size()) + " chunk(s)");
     }
+
+    FlushDirty(camChunkY, pool, queue);
+
+    // // Load missing chunks inside radius
+    // const int r = viewRadiusXZ;
+    // for (int dz = -r; dz <= r; ++dz)
+    // for (int dx = -r; dx <= r; ++dx) {
+    //     if (dx*dx + dz*dz > r*r) continue;   // circular radius
+    //     glm::ivec3 coord { camChunk.x + dx, 0, camChunk.z + dz };
+    //     if (m_chunks.count(coord)) continue;
  
-    FlushDirty(pool, queue);
+    //     auto chunk = std::make_unique<Chunk>();
+    //     chunk->m_chunkCoord = coord;
+    //     GenerateChunk(*chunk, coord);
+    //     m_chunks.emplace(coord, std::move(chunk));
+    // }
+
+    // // Unload chunks beyond radius + margin
+    // const int unloadR = r + 2;
+    // std::vector<glm::ivec3> toRemove;
+    // for (auto& [coord, _] : m_chunks) {
+    //     int dx = coord.x - camChunk.x;
+    //     int dz = coord.z - camChunk.z;
+    //     if (dx*dx + dz*dz > unloadR*unloadR)
+    //         toRemove.push_back(coord);
+    // }
+    // if (!toRemove.empty()) {
+    //     VkDevice dev = m_context->GetDevice();
+    //     for (auto& coord : toRemove) {
+    //         m_chunks[coord]->DestroyBuffers(dev);
+    //         m_chunks.erase(coord);
+    //     }
+    //     Logger::Log(LogLevel::Info, "World", "Unloaded " + std::to_string(toRemove.size()) + " chunk(s)");
+    // }
+ 
+    // FlushDirty(pool, queue);
 }
 
 // ─────────────────────────────────────────────
 //  Mesh management
 // ─────────────────────────────────────────────
  
-void ChunkManager::FlushDirty(VkCommandPool pool, VkQueue queue)
-{
-    for (auto& [coord, chunk] : m_chunks)
-        if (chunk->m_dirty)
-            RebuildMesh(*chunk, pool, queue);
+void ChunkManager::FlushDirty(int camChunkY, VkCommandPool pool, VkQueue queue) {
+    for (auto& [coord, chunk] : m_chunks) {
+        if (!chunk->m_dirty) continue;
+
+        const int dy = std::abs(coord.y - camChunkY);
+        if (dy > VERTICAL_RENDER_DISTANCE) { continue; }
+        
+        RebuildMesh(*chunk, pool, queue);
+    }
 }
 
 void ChunkManager::RebuildMesh(Chunk& chunk, VkCommandPool pool, VkQueue queue) {
@@ -172,22 +218,29 @@ ChunkNeighbors ChunkManager::GatherNeighbors(glm::ivec3 cc) const {
 //  World generation
 // ─────────────────────────────────────────────
  
-void ChunkManager::GenerateChunk(Chunk& chunk, glm::ivec3 /*chunkCoord*/) const {
-    // Flat stone world.  Terrain generation goes here later.
-    // Layout inside the 8-block tall slab:
-    //   y 0-4  Stone
-    //   y 5    Dirt
-    //   y 6    Dirt
-    //   y 7    Grass  (surface — top face is fully exposed to air above)
+void ChunkManager::GenerateChunk(Chunk& chunk, glm::ivec3 chunkCoord) const {
+    // World-space Y of the bottom block in this slab
+    const int worldYBase = chunkCoord.y * CHUNK_SIZE;
+
     for (int z = 0; z < CHUNK_SIZE; ++z)
         for (int x = 0; x < CHUNK_SIZE; ++x)
             for (int y = 0; y < CHUNK_SIZE; ++y) {
+                const int worldY = worldYBase + y;
+            
                 BlockType t = BlockType::Air;
-                if (y <= 4) t = BlockType::Stone;
-                else if (y <= 6) t = BlockType::Dirt;
-                else t = BlockType::Grass;
+            
+                if (worldY < SEA_LEVEL - 3) {
+                    t = BlockType::Stone;
+                } else if (worldY < SEA_LEVEL - 1) {
+                    t = BlockType::Dirt;
+                } else if (worldY == SEA_LEVEL - 1) {
+                    t = BlockType::Grass;
+                }
+                // worldY >= SEA_LEVEL → Air (sky above the surface)
+            
                 chunk.SetBlock(x, y, z, t);
             }
+
     chunk.m_dirty = true;
 }
 

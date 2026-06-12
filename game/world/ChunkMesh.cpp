@@ -1,4 +1,4 @@
-#include "ChunkMesh.hpp"
+#include "game/world/ChunkMesh.hpp"
  
 #include <glm/glm.hpp>
 

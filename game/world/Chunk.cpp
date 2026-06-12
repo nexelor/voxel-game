@@ -1,4 +1,4 @@
-#include "Chunk.hpp"
+#include "game/world/Chunk.hpp"
  
 #include <glm/gtc/matrix_transform.hpp>
 #include <stdexcept>

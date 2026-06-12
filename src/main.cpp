@@ -1,4 +1,4 @@
-#include "engine/core/Application.hpp"
+#include "game/Application.hpp"
 
 int main() {
     Application app;

@@ -1,7 +1,9 @@
-#include "Application.hpp"
+#include "game/Application.hpp"
 
-#include "Assert.hpp"
-#include "Logger.hpp"
+#include "content/blocks/Blocks.hpp"
+#include "engine/core/Assert.hpp"
+#include "engine/core/Logger.hpp"
+#include "game/registry/BlockRegistry.hpp"
 #include <GLFW/glfw3.h>
 
 bool Application::Initialize() {
@@ -22,6 +24,8 @@ bool Application::Initialize() {
     m_atlas->CreateSolid(255, 255, 255);
     m_atlas->WriteDescriptorSet(m_renderer->GetTextureDescSet());
     m_renderer->BindTextureAtlas(m_renderer->GetTextureDescSet());
+
+    RegisterAllBlocks(BlockRegistry::Get());
 
     // World
     m_chunkManager = std::make_unique<ChunkManager>(m_vulkan.get(), m_renderer.get());
