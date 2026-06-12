@@ -4,25 +4,33 @@
 #include <stdexcept>
 #include <cstring>
 
-///
-/// Block access
-///
-
 bool Chunk::InBounds(int x, int y, int z) {
-    return x >= 0 && x < CHUNK_SIZE &&
-           y >= 0 && y < CHUNK_SIZE &&
-           z >= 0 && z < CHUNK_SIZE;
+    return x >= 0 && x < CHUNK_SIZE
+        && y >= 0 && y < CHUNK_SIZE
+        && z >= 0 && z < CHUNK_SIZE;
 }
  
 BlockType Chunk::GetBlock(int x, int y, int z) const {
     if (!InBounds(x, y, z)) return BlockType::Air;
-    return m_blocks[x + CHUNK_SIZE * (y + CHUNK_SIZE * z)];
+    return m_blocks[Index(x, y, z)];
 }
  
 void Chunk::SetBlock(int x, int y, int z, BlockType type) {
     if (!InBounds(x, y, z)) return;
-    m_blocks[x + CHUNK_SIZE * (y + CHUNK_SIZE * z)] = type;
-    m_dirty = true;
+    m_blocks[Index(x, y, z)] = type;
+
+    // Mark the slab that contains this Y coordinate dirty
+    const int slab = y / SLAB_HEIGHT;
+    MarkSlabDirty(slab);
+
+    // If this block sits on the bottom face of its slab, the slab below
+    // also needs remeshing (it may need to cull or un-cull its top face).
+    if (y % SLAB_HEIGHT == 0 && slab > 0)
+        MarkSlabDirty(slab - 1);
+ 
+    // Likewise for the top face of its slab.
+    if (y % SLAB_HEIGHT == SLAB_HEIGHT - 1 && slab < SLAB_COUNT - 1)
+        MarkSlabDirty(slab + 1);
 }
 
 ///
@@ -30,8 +38,7 @@ void Chunk::SetBlock(int x, int y, int z, BlockType type) {
 ///
 
 glm::mat4 Chunk::GetModelMatrix() const {
-    glm::vec3 worldOrigin = glm::vec3(m_chunkCoord) * static_cast<float>(CHUNK_SIZE);
-    return glm::translate(glm::mat4(1.0f), worldOrigin);
+    return glm::translate(glm::mat4(1.0f), glm::vec3(m_chunkCoord) * static_cast<float>(CHUNK_SIZE));
 }
 
 ///
@@ -43,8 +50,7 @@ uint32_t Chunk::FindMemoryType(VkPhysicalDevice physDevice, uint32_t typeFilter,
     vkGetPhysicalDeviceMemoryProperties(physDevice, &memProps);
  
     for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if ((typeFilter & (1u << i)) &&
-            (memProps.memoryTypes[i].propertyFlags & props) == props)
+        if ((typeFilter & (1u << i)) && (memProps.memoryTypes[i].propertyFlags & props) == props)
             return i;
     }
     throw std::runtime_error("Chunk: failed to find suitable memory type");
@@ -122,60 +128,35 @@ void Chunk::UploadMesh(VkDevice device, VkPhysicalDevice physDevice, VkCommandPo
         return;
     }
 
-    // Vertex buffer
+    auto uploadBuffer = [&](VkDeviceSize size, const void* data,
+        VkBufferUsageFlags dstUsage, VkBuffer& outBuf, VkDeviceMemory& outMem)
     {
-        VkDeviceSize size = sizeof(VoxelVertex) * vertices.size();
- 
-        VkBuffer stagingBuf; VkDeviceMemory stagingMem;
-        CreateBuffer(device, physDevice, size,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VkBuffer staging;
+        VkDeviceMemory stagingMem;
+        CreateBuffer(device, physDevice, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            stagingBuf, stagingMem);
+            staging, stagingMem);
  
-        void* data;
-        vkMapMemory(device, stagingMem, 0, size, 0, &data);
-        memcpy(data, vertices.data(), size);
+        void* ptr;
+        vkMapMemory(device, stagingMem, 0, size, 0, &ptr);
+        memcpy(ptr, data, static_cast<size_t>(size));
         vkUnmapMemory(device, stagingMem);
  
-        CreateBuffer(device, physDevice, size,
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            m_vertexBuffer, m_vertexMemory);
+        CreateBuffer(device, physDevice, size, dstUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outBuf, outMem);
  
-        CopyBuffer(device, pool, queue, stagingBuf, m_vertexBuffer, size);
- 
-        vkDestroyBuffer(device, stagingBuf, nullptr);
+        CopyBuffer(device, pool, queue, staging, outBuf, size);
+        vkDestroyBuffer(device, staging, nullptr);
         vkFreeMemory(device, stagingMem, nullptr);
-    }
+    };
 
-    // Index buffer
-    {
-        VkDeviceSize size = sizeof(uint32_t) * indices.size();
+    uploadBuffer(sizeof(VoxelVertex) * vertices.size(), vertices.data(),
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_vertexBuffer, m_vertexMemory);
  
-        VkBuffer stagingBuf; VkDeviceMemory stagingMem;
-        CreateBuffer(device, physDevice, size,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            stagingBuf, stagingMem);
- 
-        void* data;
-        vkMapMemory(device, stagingMem, 0, size, 0, &data);
-        memcpy(data, indices.data(), size);
-        vkUnmapMemory(device, stagingMem);
- 
-        CreateBuffer(device, physDevice, size,
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            m_indexBuffer, m_indexMemory);
- 
-        CopyBuffer(device, pool, queue, stagingBuf, m_indexBuffer, size);
- 
-        vkDestroyBuffer(device, stagingBuf, nullptr);
-        vkFreeMemory(device, stagingMem, nullptr);
-    }
+    uploadBuffer(sizeof(uint32_t) * indices.size(), indices.data(),
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT, m_indexBuffer, m_indexMemory);
  
     m_indexCount = static_cast<uint32_t>(indices.size());
-    m_dirty      = false;
 }
 
 void Chunk::DestroyBuffers(VkDevice device) {

@@ -12,14 +12,15 @@
 class Application {
 public:
     bool Initialize();
-
     void Run();
-
     void Shutdown();
 
 private:
     void Update();
     void Render();
+
+    // Poll mouse buttons and fire raycast -> SetBlock
+    void HandleBlockInteraction();
 
 private:
     std::unique_ptr<Window> m_window;
@@ -30,6 +31,12 @@ private:
     std::unique_ptr<Camera>        m_camera;
 
     Timer m_timer;
-
     bool m_running = false;
+
+    // Edge-detection: only act on the press, not every frame held
+    bool m_leftWasDown = false;
+    bool m_rightWasDown = false;
+
+    // How many chunks in XZ to keep loaded around the camera
+    static constexpr int VIEW_RADIUS = 6;
 };

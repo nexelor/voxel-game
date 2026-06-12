@@ -65,17 +65,16 @@ void Renderer::CreateDescriptorSetLayouts() {
  
     // Set 0 — CameraUBO (vertex + fragment)
     {
-        VkDescriptorSetLayoutBinding uboBinding{};
-        uboBinding.binding = 0;
-        uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboBinding.descriptorCount = 1;
-        uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        uboBinding.pImmutableSamplers = nullptr;
+        VkDescriptorSetLayoutBinding b{};
+        b.binding = 0;
+        b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        b.descriptorCount = 1;
+        b.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
  
         VkDescriptorSetLayoutCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         info.bindingCount = 1;
-        info.pBindings = &uboBinding;
+        info.pBindings = &b;
  
         if (vkCreateDescriptorSetLayout(device, &info, nullptr, &m_globalSetLayout) != VK_SUCCESS)
             throw std::runtime_error("Failed to create global descriptor set layout");
@@ -83,17 +82,16 @@ void Renderer::CreateDescriptorSetLayouts() {
  
     // Set 1 — block atlas sampler (fragment only)
     {
-        VkDescriptorSetLayoutBinding samplerBinding{};
-        samplerBinding.binding = 0;
-        samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerBinding.descriptorCount = 1;
-        samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        samplerBinding.pImmutableSamplers = nullptr;
+        VkDescriptorSetLayoutBinding b{};
+        b.binding = 0;
+        b.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        b.descriptorCount = 1;
+        b.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
  
         VkDescriptorSetLayoutCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         info.bindingCount = 1;
-        info.pBindings = &samplerBinding;
+        info.pBindings = &b;
  
         if (vkCreateDescriptorSetLayout(device, &info, nullptr, &m_textureSetLayout) != VK_SUCCESS)
             throw std::runtime_error("Failed to create texture descriptor set layout");
@@ -121,7 +119,6 @@ void Renderer::CreateDescriptorPool() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    // max sets = one global set per frame + one texture set
     poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT + 1;
  
     if (vkCreateDescriptorPool(m_context->GetDevice(), &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
@@ -132,15 +129,8 @@ void Renderer::CreateCameraUBOs() {
     VkDeviceSize bufSize = sizeof(CameraUBO);
  
     for (auto& ubo : m_cameraUBOs) {
-        CreateBuffer(
-            bufSize,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            // HOST_VISIBLE so we can write from CPU each frame;
-            // HOST_COHERENT removes the need for manual flush calls.
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            ubo.buffer,
-            ubo.memory
-        );
+        CreateBuffer(bufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubo.buffer, ubo.memory);
  
         // Persistent map — valid until DestroyCameraUBOs()
         vkMapMemory(m_context->GetDevice(), ubo.memory, 0, bufSize, 0, &ubo.mappedPtr);
@@ -167,28 +157,25 @@ void Renderer::AllocateDescriptorSets() {
         std::array<VkDescriptorSetLayout, MAX_FRAMES_IN_FLIGHT> layouts;
         layouts.fill(m_globalSetLayout);
  
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = m_descriptorPool;
-        allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
-        allocInfo.pSetLayouts = layouts.data();
+        VkDescriptorSetAllocateInfo ai{};
+        ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ai.descriptorPool = m_descriptorPool;
+        ai.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+        ai.pSetLayouts = layouts.data();
  
-        if (vkAllocateDescriptorSets(m_context->GetDevice(), &allocInfo, m_globalDescSets.data()) != VK_SUCCESS)
+        if (vkAllocateDescriptorSets(m_context->GetDevice(), &ai, m_globalDescSets.data()) != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate global descriptor sets");
     }
  
-    // ── Set 1 (texture atlas) — allocated here, written later by TextureAtlas ──
-    // We allocate the set now so the slot is reserved in the pool.
-    // It will remain un-written (VK_NULL_HANDLE handle to image) until
-    // a TextureAtlas object calls UpdateDescriptorSets() or writes it directly.
+    // Set 1 — single shared atlas set
     {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = m_descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &m_textureSetLayout;
+        VkDescriptorSetAllocateInfo ai{};
+        ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ai.descriptorPool = m_descriptorPool;
+        ai.descriptorSetCount = 1;
+        ai.pSetLayouts = &m_textureSetLayout;
  
-        if (vkAllocateDescriptorSets(m_context->GetDevice(), &allocInfo, &m_textureDescSet) != VK_SUCCESS)
+        if (vkAllocateDescriptorSets(m_context->GetDevice(), &ai, &m_textureDescSet) != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate texture descriptor set");
     }
 }
@@ -206,14 +193,12 @@ void Renderer::UpdateDescriptorSets() {
         write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet          = m_globalDescSets[i];
         write.dstBinding      = 0;
-        write.dstArrayElement = 0;
         write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         write.descriptorCount = 1;
         write.pBufferInfo     = &bufInfo;
  
         vkUpdateDescriptorSets(m_context->GetDevice(), 1, &write, 0, nullptr);
     }
-    // Set 1 (texture) is written when TextureAtlas provides a VkImageView + VkSampler.
 }
 
 void Renderer::CreateSyncObjects() {
@@ -226,18 +211,14 @@ void Renderer::CreateSyncObjects() {
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    // Per-frame: renderFinished + fence
     for (auto& frame : m_frames) {
         if (vkCreateSemaphore(device, &semInfo, nullptr, &frame.renderFinishedSemaphore) != VK_SUCCESS ||
             vkCreateFence(device, &fenceInfo, nullptr, &frame.inFlightFence) != VK_SUCCESS)
             throw std::runtime_error("Failed to create per-frame sync objects");
     }
 
-    // One acquire semaphore per pool slot — pool size must be >= swapchain image count.
-    // We size it to max(MAX_FRAMES_IN_FLIGHT, swapchain image count) in CreateSyncObjects
-    // which is called after CreateSwapchainResources(), so we know the image count.
     const size_t acquirePoolSize = std::max(
-        (size_t)MAX_FRAMES_IN_FLIGHT,
+        static_cast<size_t>(MAX_FRAMES_IN_FLIGHT),
         m_swapchain->GetImageViews().size()
     );
     m_imageAvailableSemaphores.resize(acquirePoolSize);
@@ -280,11 +261,11 @@ void Renderer::CleanupSwapchain() {
     m_voxelPipeline.Destroy(device);
 
     // Depth buffer
-    vkDestroyImageView (device, m_depthImageView,   nullptr);
-    vkDestroyImage     (device, m_depthImage,       nullptr);
-    vkFreeMemory       (device, m_depthImageMemory, nullptr);
-    m_depthImageView   = VK_NULL_HANDLE;
-    m_depthImage       = VK_NULL_HANDLE;
+    vkDestroyImageView(device, m_depthImageView, nullptr);
+    vkDestroyImage(device, m_depthImage, nullptr);
+    vkFreeMemory(device, m_depthImageMemory, nullptr);
+    m_depthImageView = VK_NULL_HANDLE;
+    m_depthImage = VK_NULL_HANDLE;
     m_depthImageMemory = VK_NULL_HANDLE;
 
     for (auto fb : m_framebuffers)
@@ -306,9 +287,9 @@ void Renderer::CleanupSwapchain() {
 }
 
 void Renderer::RecreateSwapchain() {
-    int width = 0, height = 0;
-    while (width == 0 || height == 0) {
-        glfwGetFramebufferSize(m_window->GetNativeWindow(), &width, &height);
+    int w = 0, h = 0;
+    while (w == 0 || h == 0) {
+        glfwGetFramebufferSize(m_window->GetNativeWindow(), &w, &h);
         glfwWaitEvents();
     }
 
@@ -344,13 +325,8 @@ void Renderer::CreateRenderPass() {
     depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference colorRef{};
-    colorRef.attachment = 0;
-    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference depthRef{};
-    depthRef.attachment = 1;
-    depthRef.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+    VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -358,26 +334,26 @@ void Renderer::CreateRenderPass() {
     subpass.pColorAttachments = &colorRef;
     subpass.pDepthStencilAttachment = &depthRef;
 
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    VkSubpassDependency dep{};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dep.srcAccessMask = 0;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 
-    VkRenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-    renderPassInfo.pAttachments = attachments.data();
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
+    VkRenderPassCreateInfo rpInfo{};
+    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rpInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    rpInfo.pAttachments = attachments.data();
+    rpInfo.subpassCount = 1;
+    rpInfo.pSubpasses = &subpass;
+    rpInfo.dependencyCount = 1;
+    rpInfo.pDependencies = &dep;
 
-    if (vkCreateRenderPass(m_context->GetDevice(), &renderPassInfo, nullptr, &m_renderPass) != VK_SUCCESS)
+    if (vkCreateRenderPass(m_context->GetDevice(), &rpInfo, nullptr, &m_renderPass) != VK_SUCCESS)
         throw std::runtime_error("Failed to create render pass");
 }
 
@@ -386,22 +362,20 @@ void Renderer::CreateDepthResources() {
     VkExtent2D extent = m_swapchain->GetExtent();
 
     // Image
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = extent.width;
-    imageInfo.extent.height = extent.height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = VK_FORMAT_D32_SFLOAT;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkImageCreateInfo imgInfo{};
+    imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imgInfo.imageType = VK_IMAGE_TYPE_2D;
+    imgInfo.extent = { extent.width, extent.height, 1 };
+    imgInfo.mipLevels = 1;
+    imgInfo.arrayLayers = 1;
+    imgInfo.format = VK_FORMAT_D32_SFLOAT;
+    imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imgInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
  
-    if (vkCreateImage(device, &imageInfo, nullptr, &m_depthImage) != VK_SUCCESS)
+    if (vkCreateImage(device, &imgInfo, nullptr, &m_depthImage) != VK_SUCCESS)
         throw std::runtime_error("Failed to create depth image");
  
     VkMemoryRequirements memReqs;
@@ -526,17 +500,13 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
     VkExtent2D extent = m_swapchain->GetExtent();
 
     VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
     viewport.width = static_cast<float>(extent.width);
     viewport.height = static_cast<float>(extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(cmd, 0, 1, &viewport);
  
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = extent;
+    VkRect2D scissor{ {0,0}, extent };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     // Bind set 0 (camera UBO for this frame)
@@ -549,7 +519,7 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_voxelPipeline.GetLayout(),
             1, 1, &m_textureDescSet, 0, nullptr);
  
-        for (const auto& chunk : m_chunkManager->GetChunks()) {
+        for (const auto& [coord, chunk] : m_chunkManager->GetChunks()) {
             if (!chunk->HasMesh()) continue;
 
             VoxelPushConstants pc{};
@@ -600,29 +570,29 @@ void Renderer::DrawFrame() {
     VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
     VkSemaphore signalSemaphores[] = { frame.renderFinishedSemaphore };
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &frame.commandBuffer;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
+    VkSubmitInfo si{};
+    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.waitSemaphoreCount = 1;
+    si.pWaitSemaphores = waitSemaphores;
+    si.pWaitDstStageMask = waitStages;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &frame.commandBuffer;
+    si.signalSemaphoreCount = 1;
+    si.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(m_context->GetGraphicsQueue(), 1, &submitInfo, frame.inFlightFence) != VK_SUCCESS)
+    if (vkQueueSubmit(m_context->GetGraphicsQueue(), 1, &si, frame.inFlightFence) != VK_SUCCESS)
         throw std::runtime_error("Failed to submit draw command");
 
     VkSwapchainKHR swapchains[] = { m_swapchain->GetSwapchain() };
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapchains;
-    presentInfo.pImageIndices = &imageIndex;
+    VkPresentInfoKHR pi{};
+    pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    pi.waitSemaphoreCount = 1;
+    pi.pWaitSemaphores = signalSemaphores;
+    pi.swapchainCount = 1;
+    pi.pSwapchains = swapchains;
+    pi.pImageIndices = &imageIndex;
 
-    result = vkQueuePresentKHR(m_context->GetPresentQueue(), &presentInfo);
+    result = vkQueuePresentKHR(m_context->GetPresentQueue(), &pi);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->WasResized())
         RecreateSwapchain();
@@ -633,23 +603,15 @@ void Renderer::DrawFrame() {
 }
 
 void Renderer::UpdateCamera(const CameraUBO& camera) {
-    // Write into the buffer for the frame we're about to render.
-    // m_currentFrame is already advanced at the end of DrawFrame, so
-    // we write into currentFrame before DrawFrame records commands for it.
     memcpy(m_cameraUBOs[m_currentFrame].mappedPtr, &camera, sizeof(CameraUBO));
 }
-
-///
-/// Helpers
-///
 
 uint32_t Renderer::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memProps;
     vkGetPhysicalDeviceMemoryProperties(m_context->GetPhysicalDevice(), &memProps);
  
     for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if ((typeFilter & (1u << i)) &&
-            (memProps.memoryTypes[i].propertyFlags & properties) == properties)
+        if ((typeFilter & (1u << i)) && (memProps.memoryTypes[i].propertyFlags & properties) == properties)
             return i;
     }
  
@@ -661,24 +623,24 @@ void Renderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
 {
     VkDevice device = m_context->GetDevice();
  
-    VkBufferCreateInfo bufInfo{};
-    bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufInfo.size = size;
-    bufInfo.usage = usage;
-    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkBufferCreateInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bi.size = size;
+    bi.usage = usage;
+    bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
  
-    if (vkCreateBuffer(device, &bufInfo, nullptr, &outBuffer) != VK_SUCCESS)
+    if (vkCreateBuffer(device, &bi, nullptr, &outBuffer) != VK_SUCCESS)
         throw std::runtime_error("Failed to create buffer");
  
     VkMemoryRequirements memReqs;
     vkGetBufferMemoryRequirements(device, outBuffer, &memReqs);
  
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memReqs.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(memReqs.memoryTypeBits, props);
+    VkMemoryAllocateInfo ai{};
+    ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ai.allocationSize = memReqs.size;
+    ai.memoryTypeIndex = FindMemoryType(memReqs.memoryTypeBits, props);
  
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &outMemory) != VK_SUCCESS)
+    if (vkAllocateMemory(device, &ai, nullptr, &outMemory) != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate buffer memory");
  
     vkBindBufferMemory(device, outBuffer, outMemory, 0);

@@ -7,16 +7,20 @@
 struct GLFWwindow;
 
 // ─────────────────────────────────────────────
-//  Camera
+//  Camera — first-person fly camera
 //
-//  First-person WASD + mouse-look camera.
-//  Call Update() every frame with deltaTime;
-//  it reads GLFW input and rebuilds the
-//  CameraUBO ready for Renderer::UpdateCamera().
+//  Call Update(dt) every frame; it reads GLFW
+//  input and updates position + orientation.
 //
-//  Mouse is captured on construction and
-//  released when the window loses focus.
-//  Press Escape to quit (sets window close flag).
+//  GetFront() is used by Application to build
+//  the ray for block pick/place raycasts.
+//
+//  Controls:
+//    W/S/A/D        — move forward/back/left/right
+//    Space          — fly up
+//    Left Shift     — fly down
+//    Mouse          — look
+//    Escape         — close window
 // ─────────────────────────────────────────────
 
 class Camera {
@@ -30,6 +34,7 @@ public:
     CameraUBO GetUBO(float aspectRatio) const;
 
     glm::vec3 GetPosition() const { return m_position; }
+    glm::vec3 GetFront() const { return m_front; }
 
     // Exposed for application-level use
     float moveSpeed = 20.0f;   // blocks per second
@@ -38,7 +43,7 @@ public:
 private:
     GLFWwindow* m_window;
 
-    glm::vec3 m_position { 16.0f, 40.0f, 16.0f }; // start above the chunk
+    glm::vec3 m_position { 16.f, 10.f, 16.f };
     float m_yaw { -90.0f };  // looking toward -Z (north)
     float m_pitch {  -20.0f };
 
@@ -46,7 +51,7 @@ private:
     double m_lastMouseY { 0.0 };
     bool m_firstMouse { true };
 
-    glm::vec3 m_front { 0, 0, -1 };
-    glm::vec3 m_right { 1, 0,  0 };
-    glm::vec3 m_up { 0, 1,  0 };
+    glm::vec3 m_front { 0.f, 0.f, -1.f };
+    glm::vec3 m_right { 1.f, 0.f,  0.f };
+    glm::vec3 m_up { 0.f, 1.f,  0.f };
 };
