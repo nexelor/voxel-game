@@ -125,51 +125,21 @@ void ChunkManager::FlushDirty(VkCommandPool pool, VkQueue queue)
 
 void ChunkManager::RebuildMesh(Chunk& chunk, VkCommandPool pool, VkQueue queue) {
     ChunkNeighbors nb = GatherNeighbors(chunk.m_chunkCoord);
- 
-    // Determine which slabs to remesh.
-    // m_dirty means "rebuild all" (initial gen, neighbor-caused full remesh).
-    // Otherwise only the slabs flagged in the dirty bitmask.
-    uint8_t slabMask = chunk.m_dirty
-        ? (1u << SLAB_COUNT) - 1u   // all 4 slabs
-        : chunk.GetDirtySlabs();
 
     std::vector<VoxelVertex> verts;
-    std::vector<uint32_t> indices;
+    std::vector<uint32_t>    indices;
 
-    for (int slab = 0; slab < SLAB_COUNT; ++slab) {
-        if (!((slabMask >> slab) & 1u)) continue;
+    ChunkMesher::Mesh(chunk, nb, verts, indices, 0, CHUNK_SIZE);
 
-        const int yMin = slab * SLAB_HEIGHT;
-        const int yMax = slab * SLAB_HEIGHT;
-
-        // Append this slab's geometry into the shared buffers.
-        // Index values must be offset by however many vertices
-        // were already written by earlier slabs.
-        const uint32_t vertexBase = static_cast<uint32_t>(verts.size());
-
-        std::vector<VoxelVertex> slabVerts;
-        std::vector<uint32_t>    slabIndices;
-        ChunkMesher::Mesh(chunk, nb, slabVerts, slabIndices, yMin, yMax);
-
-        for (auto& v : slabVerts)
-            verts.push_back(v);
-
-        for (uint32_t idx : slabIndices)
-            indices.push_back(idx + vertexBase);
-
-        chunk.ClearSlabDirty(slab);
-    }
-
-    chunk.m_dirty = false;
+    chunk.ClearAllDirty();
     chunk.UploadMesh(m_context->GetDevice(), m_context->GetPhysicalDevice(),
         pool, queue, verts, indices);
 
     Logger::Log(LogLevel::Info, "World",
         "Meshed (" +
         std::to_string(chunk.m_chunkCoord.x) + "," +
-        std::to_string(chunk.m_chunkCoord.z) + ") slabMask=" +
-        std::to_string(slabMask) + " — " +
-        std::to_string(verts.size())       + " verts, " +
+        std::to_string(chunk.m_chunkCoord.z) + ") — " +
+        std::to_string(verts.size()) + " verts, " +
         std::to_string(indices.size() / 3) + " tris");
 }
 

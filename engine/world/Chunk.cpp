@@ -18,19 +18,7 @@ BlockType Chunk::GetBlock(int x, int y, int z) const {
 void Chunk::SetBlock(int x, int y, int z, BlockType type) {
     if (!InBounds(x, y, z)) return;
     m_blocks[Index(x, y, z)] = type;
-
-    // Mark the slab that contains this Y coordinate dirty
-    const int slab = y / SLAB_HEIGHT;
-    MarkSlabDirty(slab);
-
-    // If this block sits on the bottom face of its slab, the slab below
-    // also needs remeshing (it may need to cull or un-cull its top face).
-    if (y % SLAB_HEIGHT == 0 && slab > 0)
-        MarkSlabDirty(slab - 1);
- 
-    // Likewise for the top face of its slab.
-    if (y % SLAB_HEIGHT == SLAB_HEIGHT - 1 && slab < SLAB_COUNT - 1)
-        MarkSlabDirty(slab + 1);
+    m_dirty = true;
 }
 
 ///

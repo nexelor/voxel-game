@@ -10,11 +10,11 @@
 // ─────────────────────────────────────────────
  
 BlockType ChunkNeighbors::Sample(int x, int y, int z) const {
-    if (x < 0)              return nx ? nx->GetBlock(x + CHUNK_SIZE, y, z) : BlockType::Air;
+    if (x < 0)            return nx ? nx->GetBlock(x + CHUNK_SIZE, y, z) : BlockType::Air;
     if (x >= CHUNK_SIZE)  return px ? px->GetBlock(x - CHUNK_SIZE, y, z) : BlockType::Air;
-    if (y < 0)              return ny ? ny->GetBlock(x, y + CHUNK_SIZE, z) : BlockType::Air;
+    if (y < 0)            return ny ? ny->GetBlock(x, y + CHUNK_SIZE, z) : BlockType::Air;
     if (y >= CHUNK_SIZE)  return py ? py->GetBlock(x, y - CHUNK_SIZE, z) : BlockType::Air;
-    if (z < 0)              return nz ? nz->GetBlock(x, y, z + CHUNK_SIZE) : BlockType::Air;
+    if (z < 0)            return nz ? nz->GetBlock(x, y, z + CHUNK_SIZE) : BlockType::Air;
     if (z >= CHUNK_SIZE)  return pz ? pz->GetBlock(x, y, z - CHUNK_SIZE) : BlockType::Air;
     return BlockType::Air;   // unreachable in normal use
 }

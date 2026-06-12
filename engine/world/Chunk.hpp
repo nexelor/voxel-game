@@ -28,8 +28,6 @@
 // ─────────────────────────────────────────────
 
 inline constexpr int CHUNK_SIZE = 32;
-inline constexpr int SLAB_HEIGHT = 8;
-inline constexpr int SLAB_COUNT = CHUNK_SIZE / SLAB_HEIGHT;
 
 class Chunk {
 public:
@@ -44,14 +42,8 @@ public:
     // Return true if (x,y,z) is inside [0, CHUNK_SIZE]
     static bool InBounds(int x, int y, int z);
 
-    // Returns a bitmask of the 4 slabs that need remeshing.
-    // Bit i is set when slab i is dirty
-    uint8_t GetDirtySlabs() const { return m_dirtySlabs; }
-    bool IsSlabDirty(int slab) const { return (m_dirtySlabs >> slab) & 1u; }
-    void MarkSlabDirty(int slab) { m_dirtySlabs |=  (1u << slab); }
-    void ClearSlabDirty(int slab) { m_dirtySlabs &= ~(1u << slab); }
-    void ClearAllDirty() { m_dirtySlabs = 0; m_dirty = false; }
-    bool AnyDirty() const { return m_dirtySlabs != 0 || m_dirty; }
+    void ClearAllDirty() { m_dirty = false; }
+    bool AnyDirty() const { return m_dirty; }
 
     // GPU buffers
     // Call after meshing. device/physDevice needed for memory allocation.
@@ -73,15 +65,11 @@ public:
     bool m_dirty { true }; // mesh needs rebuild
 
 private:
-    static int Index(int x, int y, int z)
-    {
+    static int Index(int x, int y, int z) {
         return x + CHUNK_SIZE * (y + CHUNK_SIZE * z);
     }
  
     std::array<BlockType, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE> m_blocks {};
- 
-    // One bit per slab (bits 0-3), set when that slab's mesh is stale
-    uint8_t m_dirtySlabs { 0 };
     
     // GPU resources
     VkBuffer       m_vertexBuffer { VK_NULL_HANDLE };
