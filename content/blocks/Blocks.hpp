@@ -26,7 +26,7 @@ inline void RegisterAllBlocks(BlockRegistry& reg) {
         "stone", TextureID("minecraft:stone"), true));
 
     reg.Register(BlockType::Dirt, Uniform(
-        "dirt", TextureID("minecraft:dirt"), false));
+        "dirt", TextureID("minecraft:dirt"), true));
 
     reg.Register(BlockType::Grass, TopSideBottom(
         "grass",

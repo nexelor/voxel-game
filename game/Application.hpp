@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/EventBus.hpp"
 #include "engine/core/Timer.hpp"
 #include "engine/platform/InputManager.hpp"
 #include "engine/platform/Window.hpp"
@@ -21,6 +22,7 @@ private:
     void Update();
     void Render();
     void HandleBlockInteraction();
+    void RegisterEventListeners();
 
 private:
     std::unique_ptr<Window> m_window;
@@ -41,4 +43,7 @@ private:
 
     // How many chunks in XZ to keep loaded around the camera
     static constexpr int VIEW_RADIUS = 6;
+
+    EventBus::SubscriptionID m_blockBreakListenerID = 0;
+    EventBus::SubscriptionID m_blockPlaceListenerID = 0;
 };

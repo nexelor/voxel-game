@@ -6,6 +6,7 @@
 #include "engine/core/Logger.hpp"
 #include "engine/ui/Crosshair.hpp"
 #include "engine/ui/UIRenderer.hpp"
+#include "game/events/GameEvents.hpp"
 #include "game/registry/BlockRegistry.hpp"
 #include <GLFW/glfw3.h>
 
@@ -65,6 +66,8 @@ bool Application::Initialize() {
     // Camera
     m_camera = std::make_unique<Camera>(m_window->GetNativeWindow());
 
+    RegisterEventListeners();
+
     m_running = true;
     Logger::Log(LogLevel::Info, "Core", "Initialization complete");
     return true;
@@ -83,6 +86,9 @@ void Application::Run() {
 void Application::Shutdown() {
     Logger::Log(LogLevel::Info, "Core", "Shutting down");
 
+    EventBus::Get().Unsubscribe<BlockBreakEvent>(m_blockBreakListenerID);
+    EventBus::Get().Unsubscribe<BlockPlaceEvent>(m_blockPlaceListenerID);
+    
     // Block until every in-flight command buffer has finished executing
     // before destroying ANY GPU resource (chunk buffers, atlas, UI buffers).
     // Without this, ChunkManager's destructor below can call DestroyBuffers()
@@ -160,13 +166,14 @@ void Application::HandleBlockInteraction() {
     if (!hit.hit) return;
 
     if (breakPressed) {
+        // Read the block BEFORE it's overwritten — listeners (and the
+        // event itself) need to know what was actually broken.
+        const BlockType broken = m_chunkManager->GetBlock(hit.blockPos);
+
         // Break: replace the hit block with air
         m_chunkManager->SetBlock(hit.blockPos, BlockType::Air);
-        Logger::Log(LogLevel::Info, "World",
-            "Broke block at (" +
-            std::to_string(hit.blockPos.x) + "," +
-            std::to_string(hit.blockPos.y) + "," +
-            std::to_string(hit.blockPos.z) + ")");
+
+        EventBus::Get().Publish(BlockBreakEvent{ hit.blockPos, broken });
     }
  
     if (placePressed) {
@@ -181,14 +188,41 @@ void Application::HandleBlockInteraction() {
         };
         const glm::ivec3 d = placePos - eyeBlock;
         if (d.x == 0 && (d.y == 0 || d.y == -1) && d.z == 0) return;
- 
-        m_chunkManager->SetBlock(placePos, BlockType::Stone);
-        Logger::Log(LogLevel::Info, "World",
-            "Placed block at (" +
-            std::to_string(placePos.x) + "," +
-            std::to_string(placePos.y) + "," +
-            std::to_string(placePos.z) + ")");
+
+        constexpr BlockType placedType = BlockType::Stone;
+        m_chunkManager->SetBlock(placePos, placedType);
+
+        EventBus::Get().Publish(BlockPlaceEvent{ placePos, placedType });
     }
+}
+
+// ─────────────────────────────────────────────
+//  Event listeners
+//
+//  The one place reactive systems get wired onto
+//  world events. Add new Subscribe<...>() calls
+//  here as new systems need to react — input/world
+//  code never needs to change.
+// ─────────────────────────────────────────────
+
+void Application::RegisterEventListeners() {
+    m_blockBreakListenerID = EventBus::Get().Subscribe<BlockBreakEvent>(
+        [](const BlockBreakEvent& e) {
+            Logger::Log(LogLevel::Info, "World",
+                "Broke block at (" +
+                std::to_string(e.position.x) + "," +
+                std::to_string(e.position.y) + "," +
+                std::to_string(e.position.z) + ")");
+        });
+
+    m_blockPlaceListenerID = EventBus::Get().Subscribe<BlockPlaceEvent>(
+        [](const BlockPlaceEvent& e) {
+            Logger::Log(LogLevel::Info, "World",
+                "Placed block at (" +
+                std::to_string(e.position.x) + "," +
+                std::to_string(e.position.y) + "," +
+                std::to_string(e.position.z) + ")");
+        });
 }
 
 void Application::Render() {
