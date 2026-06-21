@@ -100,6 +100,8 @@ private:
     void RebuildMesh (Chunk& chunk, VkCommandPool pool, VkQueue queue);
     void FlushDirty (int camChunkY, VkCommandPool pool, VkQueue queue);
 
+    void MarkExistingNeighborsDirty(glm::ivec3 coord);
+
     VulkanContext* m_context = nullptr;
     Renderer* m_renderer = nullptr;
 

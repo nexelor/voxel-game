@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstdlib>
 
-// At the top, add:
 static constexpr int VERTICAL_RENDER_DISTANCE = 3; // slabs above/below camera chunk
 
 // ─────────────────────────────────────────────
@@ -53,6 +52,37 @@ ChunkManager::~ChunkManager() {
         chunk->DestroyBuffers(dev);
 }
 
+// ─────────────────────────────────────────────
+//  MarkExistingNeighborsDirty
+//
+//  When a brand-new chunk appears at `coord`, any
+//  ALREADY-LOADED neighbor chunk has a mesh that
+//  was built believing this side was empty space
+//  (neighbor == nullptr => treated as air in the
+//  mesher). That neighbor's border faces are now
+//  potentially hidden behind the new chunk's
+//  blocks, so it must be re-meshed.
+//
+//  This mirrors the markNeighbor() logic already
+//  used in SetBlock() for individual block edits —
+//  chunk generation was missing the equivalent step,
+//  which is what let the seam between an old chunk
+//  and a newly streamed-in chunk go uncull
+// ─────────────────────────────────────────────
+
+void ChunkManager::MarkExistingNeighborsDirty(glm::ivec3 coord) {
+    static constexpr glm::ivec3 kOffsets[6] = {
+        { 1, 0, 0}, {-1, 0, 0},
+        { 0, 1, 0}, { 0,-1, 0},
+        { 0, 0, 1}, { 0, 0,-1}
+    };
+ 
+    for (const auto& off : kOffsets) {
+        Chunk* neighbor = GetChunk(coord + off);
+        if (neighbor) neighbor->m_dirty = true;
+    }
+}
+
 void ChunkManager::Init(VkCommandPool pool, VkQueue queue) {
     // Seed the world with a modest flat grid of chunks at Y-slab 0.
     // Update() will expand this as the camera moves.
@@ -65,6 +95,8 @@ void ChunkManager::Init(VkCommandPool pool, VkQueue queue) {
                 chunk->m_chunkCoord = coord;
                 GenerateChunk(*chunk, coord);
                 m_chunks.emplace(coord, std::move(chunk));
+
+                MarkExistingNeighborsDirty(coord);
             }
  
     FlushDirty(SEA_LEVEL_CHUNK, pool, queue);
@@ -95,6 +127,8 @@ void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandP
             chunk->m_chunkCoord = coord;
             GenerateChunk(*chunk, coord);
             m_chunks.emplace(coord, std::move(chunk));
+
+            MarkExistingNeighborsDirty(coord);
         }
     }
 
@@ -118,40 +152,6 @@ void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandP
     }
 
     FlushDirty(camChunkY, pool, queue);
-
-    // // Load missing chunks inside radius
-    // const int r = viewRadiusXZ;
-    // for (int dz = -r; dz <= r; ++dz)
-    // for (int dx = -r; dx <= r; ++dx) {
-    //     if (dx*dx + dz*dz > r*r) continue;   // circular radius
-    //     glm::ivec3 coord { camChunk.x + dx, 0, camChunk.z + dz };
-    //     if (m_chunks.count(coord)) continue;
- 
-    //     auto chunk = std::make_unique<Chunk>();
-    //     chunk->m_chunkCoord = coord;
-    //     GenerateChunk(*chunk, coord);
-    //     m_chunks.emplace(coord, std::move(chunk));
-    // }
-
-    // // Unload chunks beyond radius + margin
-    // const int unloadR = r + 2;
-    // std::vector<glm::ivec3> toRemove;
-    // for (auto& [coord, _] : m_chunks) {
-    //     int dx = coord.x - camChunk.x;
-    //     int dz = coord.z - camChunk.z;
-    //     if (dx*dx + dz*dz > unloadR*unloadR)
-    //         toRemove.push_back(coord);
-    // }
-    // if (!toRemove.empty()) {
-    //     VkDevice dev = m_context->GetDevice();
-    //     for (auto& coord : toRemove) {
-    //         m_chunks[coord]->DestroyBuffers(dev);
-    //         m_chunks.erase(coord);
-    //     }
-    //     Logger::Log(LogLevel::Info, "World", "Unloaded " + std::to_string(toRemove.size()) + " chunk(s)");
-    // }
- 
-    // FlushDirty(pool, queue);
 }
 
 // ─────────────────────────────────────────────
