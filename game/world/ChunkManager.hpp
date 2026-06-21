@@ -37,6 +37,7 @@ struct RaycastResult {
     float distance = 0.f;
 };
 
+
 // ─────────────────────────────────────────────
 //  ChunkManager
 //
@@ -56,38 +57,51 @@ struct RaycastResult {
 //    if (hit) SetBlock(hit.blockPos, Air)           // break
 //    if (hit) SetBlock(hit.blockPos+hit.faceNormal, Stone) // place
 //    // dirty flag is set automatically; next Update() uploads mesh
+//
+//  Texture atlas wiring:
+//    Call SetAtlasGridSize() once, right after TextureAtlas::Build()
+//    and BEFORE Init()/Update() ever mesh a chunk — the mesher bakes
+//    UVs using these dimensions, so meshing before this is set (or
+//    after the grid size changes, e.g. a future texture-pack reload)
+//    would bake stale/incorrect UVs into every chunk's vertex buffer.
 // ─────────────────────────────────────────────
 
 class ChunkManager {
 public:
     ChunkManager(VulkanContext* context, Renderer* renderer);
     ~ChunkManager();
-
+ 
+    // Must be called once before Init(), after the TextureAtlas is built.
+    void SetAtlasGridSize(uint32_t cols, uint32_t rows) {
+        m_atlasGridCols = cols;
+        m_atlasGridRows = rows;
+    }
+ 
     // Load initial world and upload all meshes.
     void Init(VkCommandPool pool, VkQueue queue);
-
+ 
     // Load/unload chunks around camera, then flush dirty meshes.
     // viewRadiusXZ is in chunk units.  Call once per frame.
     void Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandPool pool, VkQueue queue);
-
+ 
     // Block access (world-space)
     BlockType GetBlock(glm::ivec3 worldPos) const;
     void SetBlock(glm::ivec3 worldPos, BlockType type);
-
+ 
     // Ray cast
     RaycastResult Raycast(glm::vec3 origin, glm::vec3 dir, float maxDistance = 10.f) const;
     
     // Renderer access
     using ChunkMap = std::unordered_map<glm::ivec3, std::unique_ptr<Chunk>, IVec3Hash>;
     const ChunkMap& GetChunks() const { return m_chunks; }
-
+ 
     // Exposed so Application can call after block edits between frames
     ChunkNeighbors GatherNeighbors(glm::ivec3 chunkCoord) const;
-
+ 
     static constexpr int WORLD_HEIGHT_CHUNKS = 16;   // 16 * 32 = 512 blocks
     static constexpr int SEA_LEVEL           = 128;
     static constexpr int SEA_LEVEL_CHUNK     = SEA_LEVEL / CHUNK_SIZE; // = 4
-
+ 
 private:
     // Coord conversions
     static glm::ivec3 WorldToChunkCoord(glm::ivec3 worldPos);
@@ -95,15 +109,21 @@ private:
  
     Chunk* GetChunk(glm::ivec3 chunkCoord);
     const Chunk* GetChunk(glm::ivec3 chunkCoord) const;
-
+ 
     void GenerateChunk(Chunk& chunk, glm::ivec3 chunkCoord) const;
     void RebuildMesh (Chunk& chunk, VkCommandPool pool, VkQueue queue);
     void FlushDirty (int camChunkY, VkCommandPool pool, VkQueue queue);
-
+ 
     void MarkExistingNeighborsDirty(glm::ivec3 coord);
-
+ 
     VulkanContext* m_context = nullptr;
     Renderer* m_renderer = nullptr;
-
+ 
     ChunkMap m_chunks;
+     
+    // Real TextureAtlas grid dimensions, set via SetAtlasGridSize().
+    // Defaults to 1x1 so an accidental call-before-wiring produces an
+    // obviously-wrong-but-stable single giant tile rather than a div-by-zero.
+    uint32_t m_atlasGridCols = 1;
+    uint32_t m_atlasGridRows = 1;
 };

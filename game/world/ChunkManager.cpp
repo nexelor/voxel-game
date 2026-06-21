@@ -118,19 +118,19 @@ void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandP
     // Load missing chunks — full Y column for every XZ position in radius
     const int r = viewRadiusXZ;
     for (int dz = -r; dz <= r; ++dz)
-    for (int dx = -r; dx <= r; ++dx) {
-        if (dx*dx + dz*dz > r*r) continue;
-        for (int cy = 0; cy < WORLD_HEIGHT_CHUNKS; ++cy) {
-            glm::ivec3 coord { camChunkX + dx, cy, camChunkZ + dz };
-            if (m_chunks.count(coord)) continue;
-            auto chunk = std::make_unique<Chunk>();
-            chunk->m_chunkCoord = coord;
-            GenerateChunk(*chunk, coord);
-            m_chunks.emplace(coord, std::move(chunk));
+        for (int dx = -r; dx <= r; ++dx) {
+            if (dx*dx + dz*dz > r*r) continue;
+            for (int cy = 0; cy < WORLD_HEIGHT_CHUNKS; ++cy) {
+                glm::ivec3 coord { camChunkX + dx, cy, camChunkZ + dz };
+                if (m_chunks.count(coord)) continue;
+                auto chunk = std::make_unique<Chunk>();
+                chunk->m_chunkCoord = coord;
+                GenerateChunk(*chunk, coord);
+                m_chunks.emplace(coord, std::move(chunk));
 
-            MarkExistingNeighborsDirty(coord);
+                MarkExistingNeighborsDirty(coord);
+            }
         }
-    }
 
     // Unload XZ columns beyond radius + margin (unload all Y slabs for that column)
     const int unloadR = r + 2;
@@ -175,7 +175,8 @@ void ChunkManager::RebuildMesh(Chunk& chunk, VkCommandPool pool, VkQueue queue) 
     std::vector<VoxelVertex> verts;
     std::vector<uint32_t>    indices;
 
-    ChunkMesher::Mesh(chunk, nb, verts, indices, 0, CHUNK_SIZE);
+    ChunkMesher::Mesh(chunk, nb, verts, indices, 0, CHUNK_SIZE,
+        static_cast<float>(m_atlasGridCols), static_cast<float>(m_atlasGridRows));
 
     chunk.ClearAllDirty();
     chunk.UploadMesh(m_context->GetDevice(), m_context->GetPhysicalDevice(),

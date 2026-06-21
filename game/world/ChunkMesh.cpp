@@ -1,5 +1,6 @@
 #include "game/world/ChunkMesh.hpp"
- 
+#include "game/registry/BlockRegistry.hpp"
+
 #include <glm/glm.hpp>
 
 // ─────────────────────────────────────────────
@@ -30,10 +31,17 @@ BlockType ChunkNeighbors::Sample(int x, int y, int z) const {
 //      0 ── 1
 //      │  ╲ │    tri0 = 0,1,2    tri1 = 0,2,3
 //      3 ── 2
+//
+//  `index` doubles as both the shader's
+//  FACE_BRIGHTNESS table index AND the index into
+//  BlockDef::faceTextures / faceAtlasCoords — both
+//  tables are laid out in this exact order
+//  (0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z), so the mesher
+//  can use it directly for both lookups.
 // ─────────────────────────────────────────────
  
 struct FaceDef {
-    uint32_t   index;       // shader FACE_BRIGHTNESS table index
+    uint32_t   index;       // shared FACE_BRIGHTNESS / faceTextures index
     glm::ivec3 normal;      // integer step to neighbor block
     glm::vec3  corners[4];  // vertex offsets from block origin
     glm::vec2  uvs[4];      // local [0,1]² UVs
@@ -76,7 +84,7 @@ static inline BlockType QueryBlock(const Chunk& chunk, const ChunkNeighbors& nb,
         return chunk.GetBlock(x, y, z);
     return nb.Sample(x, y, z);
 }
-
+ 
 // ─────────────────────────────────────────────
 //  Vertex AO
 //
@@ -127,6 +135,14 @@ static uint32_t VertexAO(const Chunk& chunk, const ChunkNeighbors& nb,
 
 // ─────────────────────────────────────────────
 //  ChunkMesher::Mesh
+//
+//  atlasCols/atlasRows now describe the REAL grid
+//  dimensions of the built TextureAtlas (e.g. from
+//  TextureAtlas::GetGridCols()/GetGridRows()), and
+//  each face's tile offset comes from the block's
+//  resolved BlockDef::faceAtlasCoords — populated by
+//  BlockRegistry::ResolveAtlasCoords() right after
+//  the atlas is built (see Application::Initialize).
 // ─────────────────────────────────────────────
  
 void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std::vector<VoxelVertex>& outVertices,
@@ -138,26 +154,32 @@ void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std:
     const float tileW = 1.0f / atlasCols;
     const float tileH = 1.0f / atlasRows;
  
+    const BlockRegistry& registry = BlockRegistry::Get();
+
     for (int z = 0; z < CHUNK_SIZE; ++z)
         for (int y = yMin; y < yMax; ++y)
             for (int x = 0; x < CHUNK_SIZE; ++x) {
                 const BlockType block = chunk.GetBlock(x, y, z);
                 if (!IsOpaque(block)) continue;
 
-                const BlockInfo& info = BLOCK_TABLE[static_cast<uint8_t>(block)];
-                const float uBase = info.atlasCol * tileW;
-                const float vBase = info.atlasRow * tileH;
-
+                const BlockDef& def = registry.Lookup(block);
+ 
                 const glm::vec3  origin { static_cast<float>(x),
                                           static_cast<float>(y),
                                           static_cast<float>(z) };
                 const glm::ivec3 ipos   { x, y, z };
- 
+                
                 for (const FaceDef& face : FACES) {
                     // Neighbor block on the other side of this face
                     const glm::ivec3 nb = ipos + face.normal;
                     if (IsOpaque(QueryBlock(chunk, neighbors, nb.x, nb.y, nb.z)))
                         continue;   // face is hidden — skip it
+ 
+                    // Per-face atlas tile, resolved from this block's TextureID
+                    // for face index `face.index` (0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z).
+                    const auto& tileCoord = def.faceAtlasCoords[face.index];
+                    const float uBase = static_cast<float>(tileCoord.first) * tileW;
+                    const float vBase = static_cast<float>(tileCoord.second) * tileH;
                 
                     const uint32_t base = static_cast<uint32_t>(outVertices.size());
                 
@@ -176,7 +198,7 @@ void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std:
                         v.ao        = ao[c];
                         outVertices.push_back(v);
                     }
-                
+
                     // AO-correct quad flip (avoids interpolation seam)
                     // Flip when the ao[0]+ao[2] diagonal is darker than ao[1]+ao[3]
                     const bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);

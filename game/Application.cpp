@@ -9,6 +9,11 @@
 #include "game/registry/BlockRegistry.hpp"
 #include <GLFW/glfw3.h>
 
+// Root directory the TextureAtlas scans for block textures, relative to
+// the working directory the game is launched from (same convention as
+// "shaders/" for SPIR-V — see tools/compile_shaders.sh).
+static constexpr const char* TEXTURE_ROOT_DIR = "content/assets/textures"; 
+
 bool Application::Initialize() {
     Logger::Log(LogLevel::Info, "Core", "Initializing application");
 
@@ -24,16 +29,36 @@ bool Application::Initialize() {
     m_renderer = std::make_unique<Renderer>(m_vulkan.get(), m_window.get());
     m_renderer->Init();
 
-    // Atlas (1×1 white — unlocks drawing)
+    // ── Content registration ──
+    // Must happen before the atlas is built: CollectRequiredTextures()
+    // below reads straight from whatever blocks were just registered.
+    RegisterAllBlocks(BlockRegistry::Get());
+
+    // ── Texture atlas ──
+    // Scans content/assets/textures/<namespace>/<name>.png for every
+    // TextureID referenced by a registered block, packs them into one
+    // atlas, and uploads it. Adding a new block+texture later requires
+    // no changes here — CollectRequiredTextures() picks it up automatically.
     m_atlas = std::make_unique<TextureAtlas>(m_vulkan.get(), m_renderer->GetCommandPool());
-    m_atlas->CreateSolid(255, 255, 255);
+
+    const auto requiredTextures = BlockRegistry::Get().CollectRequiredTextures();
+    m_atlas->Build(TEXTURE_ROOT_DIR, requiredTextures);
+ 
     m_atlas->WriteDescriptorSet(m_renderer->GetTextureDescSet());
     m_renderer->BindTextureAtlas(m_renderer->GetTextureDescSet());
-
-    RegisterAllBlocks(BlockRegistry::Get());
+    
+    // Now that the atlas grid is known, resolve every block's per-face
+    // TextureIDs into concrete tile coordinates. This is cached on each
+    // BlockDef so the mesher does a flat array lookup per face — no
+    // string/hash work happens during chunk meshing.
+    BlockRegistry::Get().ResolveAtlasCoords(
+        [this](const TextureID& id) { return m_atlas->GetTileCoord(id); });
 
     // World
     m_chunkManager = std::make_unique<ChunkManager>(m_vulkan.get(), m_renderer.get());
+    // Must be set before Init() — the mesher bakes UVs using these
+    // dimensions when it builds the very first chunk meshes below.
+    m_chunkManager->SetAtlasGridSize(m_atlas->GetGridCols(), m_atlas->GetGridRows());
     m_chunkManager->Init(m_renderer->GetCommandPool(), m_renderer->GetTransferQueue());
     m_renderer->SetChunkManager(m_chunkManager.get());
 

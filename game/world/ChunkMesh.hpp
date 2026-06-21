@@ -42,9 +42,19 @@ struct ChunkNeighbors {
 //  Naive face-culled mesher — O(V) where V is
 //  the number of visible faces.
 //
+//  atlasCols/atlasRows MUST match the real grid
+//  dimensions of the currently-built TextureAtlas
+//  (TextureAtlas::GetGridCols()/GetGridRows()) —
+//  there is intentionally no fallback default here
+//  anymore: meshing against the wrong grid size
+//  silently samples the wrong tile, which is a much
+//  worse failure mode than a compile error from a
+//  missing argument.
+//
 //  Usage:
 //    ChunkNeighbors nb = manager.GatherNeighbors(coord);
-//    ChunkMesher::Mesh(chunk, nb, verts, indices);
+//    ChunkMesher::Mesh(chunk, nb, verts, indices, 0, CHUNK_SIZE,
+//                       atlas.GetGridCols(), atlas.GetGridRows());
 //    chunk.UploadMesh(..., verts, indices);
 // ─────────────────────────────────────────────
  
@@ -55,9 +65,9 @@ public:
         const ChunkNeighbors& neighbors,
         std::vector<VoxelVertex>& outVertices,
         std::vector<uint32_t>& outIndices,
-        int yMin = 0,
-        int yMax = CHUNK_SIZE,
-        float atlasCols = 16.0f,
-        float atlasRows = 16.0f
+        int yMin,
+        int yMax,
+        float atlasCols,
+        float atlasRows
     );
 };

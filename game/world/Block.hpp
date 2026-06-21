@@ -9,10 +9,12 @@
 //  Chunk. 0 = Air (empty). Everything else is
 //  a solid block type.
 //
-//  atlasRow / atlasCol encode which tile inside
-//  the texture atlas to use for this block.
-//  For now every face of a block uses the same
-//  tile; add per-face overrides later if needed.
+//  Per-block texture/appearance data (which PNG
+//  each face uses) now lives entirely in
+//  BlockRegistry/BlockDef (game/registry/BlockRegistry.hpp),
+//  resolved against the runtime-built TextureAtlas.
+//  This header only owns the type enum and the
+//  one opacity rule everything else is built on.
 // ─────────────────────────────────────────────
  
 enum class BlockType : uint8_t {
@@ -21,23 +23,9 @@ enum class BlockType : uint8_t {
     Dirt  = 2,
     Stone = 3,
     Sand  = 4,
+    Glass  = 5,
 };
 
-struct BlockInfo {
-    uint8_t atlasRow;
-    uint8_t atlasCol;
-};
- 
-// Indexed by BlockType (cast to uint8_t).
-// Air entry is never used but keeps indexing trivial.
-inline constexpr BlockInfo BLOCK_TABLE[] = {
-    { 0, 0 },  // Air
-    { 0, 0 },  // Grass  — row 0, col 0
-    { 0, 1 },  // Dirt   — row 0, col 1
-    { 0, 2 },  // Stone  — row 0, col 2
-    { 0, 3 },  // Sand   — row 0, col 3
-};
- 
 inline bool IsOpaque(BlockType t) {
     return t != BlockType::Air;
 }

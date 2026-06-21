@@ -25,6 +25,7 @@ add_executable(voxel_game ${SOURCES})
 
 target_include_directories(voxel_game PRIVATE
     .
+    vendor
 )
 
 target_link_libraries(voxel_game PRIVATE
@@ -90,3 +91,26 @@ if(GLSLC)
 else()
     message(WARNING "glslc not found — shaders must be compiled manually with compile_shaders.sh")
 endif()
+
+# ─────────────────────────────────────────────
+#  Content assets (textures, etc.)
+#
+#  TextureAtlas reads PNGs at runtime from
+#  content/assets/textures/ relative to the
+#  process's working directory — same convention
+#  as shaders/ above (see tools/compile_shaders.sh
+#  header comment: run the game from the project
+#  root, or from wherever this tree gets copied).
+#
+#  This symlinks (or copies, on platforms without
+#  symlink support) content/ next to the built
+#  executable so `cmake --build build && ./build/voxel_game`
+#  works without manually shuffling assets around.
+# ─────────────────────────────────────────────
+ 
+add_custom_command(
+    TARGET voxel_game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        "${CMAKE_SOURCE_DIR}/content" "${CMAKE_BINARY_DIR}/content"
+    COMMENT "Linking content/ into the build directory"
+)
