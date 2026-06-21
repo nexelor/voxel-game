@@ -3,6 +3,7 @@
 #include "engine/renderer/GraphicsPipeline.hpp"
 #include "engine/renderer/VulkanContext.hpp"
 #include "engine/renderer/Swapchain.hpp"
+#include "engine/ui/UIRenderer.hpp"
 
 #include <array>
 #include <memory>
@@ -46,6 +47,8 @@ public:
 
     void UpdateCamera(const CameraUBO& camera);
 
+    UIRenderer& GetUI() { return *m_ui; }
+
     VkCommandPool GetCommandPool() const { return m_commandPool; }
     VkQueue GetTransferQueue() const { return m_context->GetGraphicsQueue(); }
     VkDescriptorSet GetTextureDescSet() const { return m_textureDescSet; }
@@ -66,10 +69,8 @@ private:
     void DestroyCameraUBOs();
     void DestroySyncObjects();
 
-    // Descriptor sets are allocated from the pool; they don't need
-    // explicit destruction if the pool is destroyed with FREE_DESCRIPTOR_SET_BIT.
     void AllocateDescriptorSets();
-    void UpdateDescriptorSets();   // writes VkBuffer / VkImageView into each set
+    void UpdateDescriptorSets();
  
     // Swapchain-dependent (recreated on resize)
     void CreateSwapchainResources();
@@ -123,14 +124,12 @@ private:
     VkDescriptorSetLayout m_textureSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool      m_descriptorPool   = VK_NULL_HANDLE;
 
-    // One descriptor set per frame-in-flight for set 0 (camera UBO)
     std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> m_globalDescSets{};
-
-    // Set 1 (atlas texture) is shared across frames — texture doesn't change per-frame.
-    // Set to VK_NULL_HANDLE until TextureAtlas is implemented; drawing is skipped then.
     VkDescriptorSet m_textureDescSet = VK_NULL_HANDLE;
 
     // Camera uniform buffers
-    // One per frame-in-flight; persistently mapped.
     std::array<FrameUBO, MAX_FRAMES_IN_FLIGHT> m_cameraUBOs;
+
+    // UI renderer
+    std::unique_ptr<UIRenderer> m_ui;
 };

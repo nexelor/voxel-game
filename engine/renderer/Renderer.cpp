@@ -30,6 +30,9 @@ void Renderer::Init() {
     AllocateDescriptorSets();
     UpdateDescriptorSets();
 
+    m_ui = std::make_unique<UIRenderer>(m_context, m_renderPass, m_commandPool);
+    m_ui->Init();
+
     CreateSyncObjects();
 
     Logger::Log(LogLevel::Info, "Renderer", "Renderer initialized");
@@ -38,6 +41,11 @@ void Renderer::Init() {
 void Renderer::Cleanup() {
     VkDevice device = m_context->GetDevice();
     vkDeviceWaitIdle(device);
+
+    if (m_ui) {
+        m_ui->Cleanup();
+        m_ui.reset();
+    }
 
     DestroySyncObjects();
     CleanupSwapchain();
@@ -107,8 +115,6 @@ void Renderer::DestroyDescriptorSetLayouts() {
 }
 
 void Renderer::CreateDescriptorPool() {
-    // Sizes: one UBO slot per frame, plus one sampler slot for the atlas.
-    // Add more pool sizes here as you add more descriptor types.
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = MAX_FRAMES_IN_FLIGHT;
@@ -131,8 +137,6 @@ void Renderer::CreateCameraUBOs() {
     for (auto& ubo : m_cameraUBOs) {
         CreateBuffer(bufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubo.buffer, ubo.memory);
- 
-        // Persistent map — valid until DestroyCameraUBOs()
         vkMapMemory(m_context->GetDevice(), ubo.memory, 0, bufSize, 0, &ubo.mappedPtr);
     }
 }
@@ -181,8 +185,6 @@ void Renderer::AllocateDescriptorSets() {
 }
 
 void Renderer::UpdateDescriptorSets() {
-    // Point each global set at its corresponding UBO buffer.
-    // Call this once after AllocateDescriptorSets(); the mapping is stable.
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufInfo{};
         bufInfo.buffer = m_cameraUBOs[i].buffer;
@@ -257,10 +259,8 @@ void Renderer::CreateSwapchainResources() {
 void Renderer::CleanupSwapchain() {
     VkDevice device = m_context->GetDevice();
 
-    // Pipeline must die before render pass
     m_voxelPipeline.Destroy(device);
 
-    // Depth buffer
     vkDestroyImageView(device, m_depthImageView, nullptr);
     vkDestroyImage(device, m_depthImage, nullptr);
     vkFreeMemory(device, m_depthImageMemory, nullptr);
@@ -272,7 +272,6 @@ void Renderer::CleanupSwapchain() {
         vkDestroyFramebuffer(device, fb, nullptr);
     m_framebuffers.clear();
 
-    // Free command buffers back to pool (pool itself survives)
     for (auto& frame : m_frames) {
         if (frame.commandBuffer != VK_NULL_HANDLE) {
             vkFreeCommandBuffers(device, m_commandPool, 1, &frame.commandBuffer);
@@ -295,9 +294,16 @@ void Renderer::RecreateSwapchain() {
 
     vkDeviceWaitIdle(m_context->GetDevice());
 
+    if (m_ui) m_ui->Cleanup();
+
     CleanupSwapchain();
     CreateSwapchainResources();
     m_window->ResetResizeFlag();
+
+    if (m_ui) {
+        m_ui = std::make_unique<UIRenderer>(m_context, m_renderPass, m_commandPool);
+        m_ui->Init();
+    }
 
     Logger::Log(LogLevel::Info, "Renderer", "Swapchain recreated");
 }
@@ -412,8 +418,6 @@ void Renderer::CreateFramebuffers() {
     m_framebuffers.resize(imageViews.size());
 
     for (size_t i = 0; i < imageViews.size(); i++) {
-        // Attachment order must match the render pass attachment array:
-        //   [0] colour, [1] depth
         std::array<VkImageView, 2> attachments = { imageViews[i], m_depthImageView };
 
         VkFramebufferCreateInfo fbInfo{};
@@ -431,7 +435,6 @@ void Renderer::CreateFramebuffers() {
 }
 
 void Renderer::CreateCommandBuffers() {
-    // One command buffer per frame-in-flight, NOT per swapchain image
     for (auto& frame : m_frames) {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -466,8 +469,6 @@ void Renderer::CreateVoxelPipeline() {
         .AddDescriptorSetLayout(m_globalSetLayout)   // set 0: camera
         .AddDescriptorSetLayout(m_textureSetLayout)  // set 1: atlas
         .Build();
- 
-    // Shader modules freed automatically by Shader RAII dtors here
 }
 
 void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -492,9 +493,6 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
     rpInfo.pClearValues = clearValues.data();
 
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-    
-    // Bind the voxel pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_voxelPipeline.GetPipeline());
  
     // Set dynamic viewport & scissor (required because we use VK_DYNAMIC_STATE_*)
     VkExtent2D extent = m_swapchain->GetExtent();
@@ -508,6 +506,8 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
  
     VkRect2D scissor{ {0,0}, extent };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_voxelPipeline.GetPipeline());
 
     // Bind set 0 (camera UBO for this frame)
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_voxelPipeline.GetLayout(), 0,
@@ -537,6 +537,9 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
             vkCmdDrawIndexed(cmd, chunk->GetIndexCount(), 1, 0, 0, 0);
         }
     }
+
+    if (m_ui)
+        m_ui->EndFrame(cmd);
 
     vkCmdEndRenderPass(cmd);
 
