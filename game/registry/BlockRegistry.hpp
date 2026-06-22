@@ -117,6 +117,7 @@ public:
         for (auto& def : m_defs) {
             if (def.name == nullptr || def.name[0] == '\0') continue;
             for (int face = 0; face < 6; ++face) {
+                if (def.faceTextures[face].name.empty()) continue;
                 def.faceAtlasCoords[face] = lookup(def.faceTextures[face]);
             }
         }
