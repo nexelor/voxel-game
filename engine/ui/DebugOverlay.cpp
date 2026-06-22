@@ -132,6 +132,10 @@ void DebugOverlay::Draw(UIRenderer& ui, const Camera& camera, const ChunkManager
         "LMB     Break block",
         "RMB     Place block",
         "Esc            Quit",
+        "Space           Jump",
+        "LMB      Break block",
+        "RMB      Place block",
+        "Esc             Quit",
     };
     static constexpr int RIGHT_COUNT = static_cast<int>(std::size(rightLines));
 

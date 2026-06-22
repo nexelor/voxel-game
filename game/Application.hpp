@@ -10,6 +10,7 @@
 #include "engine/ui/DebugOverlay.hpp"
 #include "game/world/Camera.hpp"
 #include "game/world/ChunkManager.hpp"
+#include "game/world/Player.hpp"
 #include <memory>
 
 class Application {
@@ -31,6 +32,7 @@ private:
     std::unique_ptr<TextureAtlas>  m_atlas;
     std::unique_ptr<ChunkManager>  m_chunkManager;
     std::unique_ptr<Camera>        m_camera;
+    std::unique_ptr<Player>        m_player;
     std::unique_ptr<InputManager>  m_input;
 
     Timer m_timer;

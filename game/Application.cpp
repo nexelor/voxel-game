@@ -9,6 +9,7 @@
 #include "game/events/GameEvents.hpp"
 #include "game/registry/BlockRegistry.hpp"
 #include "game/world/ChunkManager.hpp"
+#include "game/world/Player.hpp"
 #include <GLFW/glfw3.h>
 
 // Root directory the TextureAtlas scans for block textures, relative to
@@ -64,8 +65,10 @@ bool Application::Initialize() {
     m_chunkManager->Init(m_renderer->GetCommandPool(), m_renderer->GetTransferQueue());
     m_renderer->SetChunkManager(m_chunkManager.get());
 
-    // Camera
+    // Camera (view only) + Player (physics body)
     m_camera = std::make_unique<Camera>(m_window->GetNativeWindow());
+    m_player = std::make_unique<Player>();
+    m_camera->SetPosition(m_player->GetEyePosition());
 
     RegisterEventListeners();
 
@@ -102,6 +105,7 @@ void Application::Shutdown() {
 
     m_chunkManager.reset();
     m_atlas.reset();
+    m_player.reset();
     m_camera.reset();
     m_renderer.reset();
     m_vulkan.reset();
@@ -113,7 +117,15 @@ void Application::Update() {
 
     m_input->Update();
 
+    if (m_input->IsActionDown(InputAction::QuitGame))
+        glfwSetWindowShouldClose(m_window->GetNativeWindow(), GLFW_TRUE);
+
+    // Mouse look first so the player's WASD uses the updated yaw.
     m_camera->Update(dt, *m_input);
+
+    // Physics step — position the player, then move camera to eye position.
+    m_player->Update(dt, *m_input, *m_chunkManager, m_camera->GetYaw());
+    m_camera->SetPosition(m_player->GetEyePosition());
 
     // Push camera matrices into the renderer for this frame
     const float aspect =

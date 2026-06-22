@@ -15,6 +15,8 @@ Camera::Camera(GLFWwindow* window) : m_window(window) {
 }
 
 void Camera::Update(float deltaTime, const InputManager& input) {
+    (void) deltaTime;
+
     const glm::vec2 mouseDelta = input.GetMouseDelta();
 
     m_yaw += mouseDelta.x * mouseSensitivity;
@@ -31,18 +33,6 @@ void Camera::Update(float deltaTime, const InputManager& input) {
     });
     m_right = glm::normalize(glm::cross(m_front, glm::vec3{ 0.f, 1.f, 0.f }));
     m_up = glm::normalize(glm::cross(m_right, m_front));
-
-    const float speed = moveSpeed * deltaTime;
-
-    if (input.IsActionDown(InputAction::MoveForward)) m_position += m_front * speed;
-    if (input.IsActionDown(InputAction::MoveBackward)) m_position -= m_front * speed;
-    if (input.IsActionDown(InputAction::MoveLeft)) m_position -= m_right * speed;
-    if (input.IsActionDown(InputAction::MoveRight)) m_position += m_right * speed;
-    if (input.IsActionDown(InputAction::FlyUp)) m_position += glm::vec3{0,1,0} * speed;
-    if (input.IsActionDown(InputAction::FlyDown)) m_position -= glm::vec3{0,1,0} * speed;
-
-    if (input.IsActionDown(InputAction::QuitGame))
-        glfwSetWindowShouldClose(m_window, GLFW_TRUE);
 }
 
 CameraUBO Camera::GetUBO(float aspectRatio) const {

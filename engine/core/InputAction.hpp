@@ -23,7 +23,7 @@ enum class InputAction : uint8_t {
     MoveBackward,
     MoveLeft,
     MoveRight,
-    FlyUp,
+    Jump,
     FlyDown,
 
     BreakBlock,

@@ -24,7 +24,7 @@ std::array<KeyBindings::Binding, static_cast<size_t>(InputAction::Count)> KeyBin
     defaults[static_cast<size_t>(InputAction::MoveBackward)] = key(GLFW_KEY_S);
     defaults[static_cast<size_t>(InputAction::MoveLeft)] = key(GLFW_KEY_A);
     defaults[static_cast<size_t>(InputAction::MoveRight)] = key(GLFW_KEY_D);
-    defaults[static_cast<size_t>(InputAction::FlyUp)] = key(GLFW_KEY_SPACE);
+    defaults[static_cast<size_t>(InputAction::Jump)] = key(GLFW_KEY_SPACE);
     defaults[static_cast<size_t>(InputAction::FlyDown)] = key(GLFW_KEY_LEFT_SHIFT);
 
     defaults[static_cast<size_t>(InputAction::BreakBlock)] = mouse(GLFW_MOUSE_BUTTON_LEFT);

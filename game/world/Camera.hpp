@@ -8,21 +8,16 @@ struct GLFWwindow;
 class InputManager;
 
 // ─────────────────────────────────────────────
-//  Camera — first-person fly camera
+//  Camera — first-person view (mouse look only)
 //
-//  Call Update(dt, input) every frame; it reads
-//  the InputManager's current action/mouse state
-//  and updates position + orientation.
+//  Position is set externally by the Player each
+//  frame via SetPosition(player.GetEyePosition()).
+//  Update(dt, input) only handles mouse look.
 //
-//  GetFront() is used by Application to build
-//  the ray for block pick/place raycasts.
-//
-//  Controls are NOT hardcoded here — see
-//  KeyBindings::Defaults() for the action -> key
-//  mapping (MoveForward/Backward/Left/Right,
-//  FlyUp, FlyDown, QuitGame).
+//  GetFront() / GetYaw() are used by Application
+//  (block raycasts) and Player (WASD orientation).
 // ─────────────────────────────────────────────
- 
+
 class Camera {
 public:
     explicit Camera(GLFWwindow* window);
@@ -31,17 +26,19 @@ public:
 
     CameraUBO GetUBO(float aspectRatio) const;
 
+    void SetPosition(glm::vec3 p) { m_position = p; }
+
     glm::vec3 GetPosition() const { return m_position; }
     glm::vec3 GetFront() const { return m_front; }
+    float GetYaw() const { return m_yaw; }
 
-    float moveSpeed = 20.0f;   // blocks per second
     float mouseSensitivity = 0.1f;
 
 private:
     GLFWwindow* m_window;
 
-    glm::vec3 m_position { 16.f, 132.f, 16.f };
-    float m_yaw { -90.0f };  // looking toward -Z (north)
+    glm::vec3 m_position { 16.f, 130.6f, 16.f };
+    float m_yaw { -90.0f };
     float m_pitch {  -20.0f };
 
     glm::vec3 m_front { 0.f, 0.f, -1.f };
