@@ -118,6 +118,7 @@ private:
 
     // Pipeline
     GraphicsPipeline m_voxelPipeline;
+    GraphicsPipeline m_translucentPipeline;
 
     // Descriptor infrastructure
     VkDescriptorSetLayout m_globalSetLayout = VK_NULL_HANDLE;
@@ -130,6 +131,8 @@ private:
     // Camera uniform buffers
     std::array<FrameUBO, MAX_FRAMES_IN_FLIGHT> m_cameraUBOs;
 
+    CameraUBO m_lastCameraUBO{};
+    
     // UI renderer
     std::unique_ptr<UIRenderer> m_ui;
 };

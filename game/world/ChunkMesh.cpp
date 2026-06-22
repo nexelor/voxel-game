@@ -96,11 +96,8 @@ static inline BlockType QueryBlock(const Chunk& chunk, const ChunkNeighbors& nb,
 // ─────────────────────────────────────────────
  
 static uint32_t VertexAO(const Chunk& chunk, const ChunkNeighbors& nb,
-    glm::ivec3 blockPos,       // block being meshed (chunk-local)
-    glm::ivec3 faceNormal,     // outward normal of this face
-    glm::vec3 cornerOffset)   // which of the 4 corners (values 0 or 1)
+    glm::ivec3 blockPos, glm::ivec3 faceNormal, glm::vec3 cornerOffset)
 {
-    // Two tangent axes (the two that are not the normal axis)
     glm::ivec3 tangents[2];
     int t = 0;
     for (int axis = 0; axis < 3; ++axis) {
@@ -110,23 +107,19 @@ static uint32_t VertexAO(const Chunk& chunk, const ChunkNeighbors& nb,
         tangents[t++] = tv;
     }
  
-    // cornerOffset values are 0 or 1; map to tangent sign -1/+1
-    // by: sign = offset * 2 - 1
     auto axisOf = [](glm::ivec3 tv) -> int {
         return tv.x ? 0 : tv.y ? 1 : 2;
     };
     glm::ivec3 s1 = tangents[0] * (static_cast<int>(cornerOffset[axisOf(tangents[0])]) * 2 - 1);
     glm::ivec3 s2 = tangents[1] * (static_cast<int>(cornerOffset[axisOf(tangents[1])]) * 2 - 1);
  
-    // Step one block out along the face normal, then sample the
-    // two side neighbors and the diagonal in the face plane.
     glm::ivec3 base = blockPos + faceNormal;
  
-    bool side1  = IsOpaque(QueryBlock(chunk, nb, base.x+s1.x,       base.y+s1.y,       base.z+s1.z      ));
-    bool side2  = IsOpaque(QueryBlock(chunk, nb, base.x+s2.x,       base.y+s2.y,       base.z+s2.z      ));
-    bool corner = IsOpaque(QueryBlock(chunk, nb, base.x+s1.x+s2.x,  base.y+s1.y+s2.y,  base.z+s1.z+s2.z ));
+    bool side1  = ContributesToAO(QueryBlock(chunk, nb, base.x+s1.x,       base.y+s1.y,       base.z+s1.z      ));
+    bool side2  = ContributesToAO(QueryBlock(chunk, nb, base.x+s2.x,       base.y+s2.y,       base.z+s2.z      ));
+    bool corner = ContributesToAO(QueryBlock(chunk, nb, base.x+s1.x+s2.x,  base.y+s1.y+s2.y,  base.z+s1.z+s2.z ));
  
-    if (side1 && side2) return 0;   // fully occluded corner
+    if (side1 && side2) return 0;
  
     return 3u - (static_cast<uint32_t>(side1)
                + static_cast<uint32_t>(side2)
@@ -145,11 +138,13 @@ static uint32_t VertexAO(const Chunk& chunk, const ChunkNeighbors& nb,
 //  the atlas is built (see Application::Initialize).
 // ─────────────────────────────────────────────
  
-void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std::vector<VoxelVertex>& outVertices,
-    std::vector<uint32_t>& outIndices, int yMin, int yMax, float atlasCols, float atlasRows)
+void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, ChunkMeshData& out,
+    int yMin, int yMax, float atlasCols, float atlasRows)
 {
-    outVertices.clear();
-    outIndices.clear();
+    out.solidVertices.clear();
+    out.solidIndices.clear();
+    out.translucentVertices.clear();
+    out.translucentIndices.clear();
  
     const float tileW = 1.0f / atlasCols;
     const float tileH = 1.0f / atlasRows;
@@ -160,20 +155,24 @@ void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std:
         for (int y = yMin; y < yMax; ++y)
             for (int x = 0; x < CHUNK_SIZE; ++x) {
                 const BlockType block = chunk.GetBlock(x, y, z);
-                if (!IsOpaque(block)) continue;
+                if (block == BlockType::Air) continue;
 
                 const BlockDef& def = registry.Lookup(block);
  
+                // Route this block's faces into the right buffer pair.
+                const bool translucent = (def.renderLayer == RenderLayer::Translucent);
+                auto& outVerts = translucent ? out.translucentVertices : out.solidVertices;
+                auto& outIdx   = translucent ? out.translucentIndices  : out.solidIndices;
+
                 const glm::vec3  origin { static_cast<float>(x),
                                           static_cast<float>(y),
                                           static_cast<float>(z) };
                 const glm::ivec3 ipos   { x, y, z };
                 
                 for (const FaceDef& face : FACES) {
-                    // Neighbor block on the other side of this face
                     const glm::ivec3 nb = ipos + face.normal;
-                    if (IsOpaque(QueryBlock(chunk, neighbors, nb.x, nb.y, nb.z)))
-                        continue;   // face is hidden — skip it
+                    if (FaceHidden(block, QueryBlock(chunk, neighbors, nb.x, nb.y, nb.z)))
+                        continue;
  
                     // Per-face atlas tile, resolved from this block's TextureID
                     // for face index `face.index` (0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z).
@@ -181,7 +180,7 @@ void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std:
                     const float uBase = static_cast<float>(tileCoord.first) * tileW;
                     const float vBase = static_cast<float>(tileCoord.second) * tileH;
                 
-                    const uint32_t base = static_cast<uint32_t>(outVertices.size());
+                    const uint32_t base = static_cast<uint32_t>(outVerts.size());
                 
                     // Per-corner AO
                     uint32_t ao[4];
@@ -192,24 +191,23 @@ void ChunkMesher::Mesh(const Chunk& chunk, const ChunkNeighbors& neighbors, std:
                     for (int c = 0; c < 4; ++c) {
                         VoxelVertex v{};
                         v.position  = origin + face.corners[c];
-                        v.uv        = { uBase + face.uvs[c].x * tileW,
-                                        vBase + face.uvs[c].y * tileH };
+                        v.uv        = { uBase + face.uvs[c].x * tileW, vBase + face.uvs[c].y * tileH };
                         v.faceIndex = face.index;
                         v.ao        = ao[c];
-                        outVertices.push_back(v);
+                        outVerts.push_back(v);
                     }
 
                     // AO-correct quad flip (avoids interpolation seam)
                     // Flip when the ao[0]+ao[2] diagonal is darker than ao[1]+ao[3]
                     const bool flip = (ao[0] + ao[2]) < (ao[1] + ao[3]);
                     if (!flip) {
-                        outIndices.push_back(base + 0); outIndices.push_back(base + 1);
-                        outIndices.push_back(base + 2); outIndices.push_back(base + 0);
-                        outIndices.push_back(base + 2); outIndices.push_back(base + 3);
+                        outIdx.push_back(base + 0); outIdx.push_back(base + 1);
+                        outIdx.push_back(base + 2); outIdx.push_back(base + 0);
+                        outIdx.push_back(base + 2); outIdx.push_back(base + 3);
                     } else {
-                        outIndices.push_back(base + 1); outIndices.push_back(base + 2);
-                        outIndices.push_back(base + 3); outIndices.push_back(base + 1);
-                        outIndices.push_back(base + 3); outIndices.push_back(base + 0);
+                        outIdx.push_back(base + 1); outIdx.push_back(base + 2);
+                        outIdx.push_back(base + 3); outIdx.push_back(base + 1);
+                        outIdx.push_back(base + 3); outIdx.push_back(base + 0);
                     }
                 }
             }

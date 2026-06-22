@@ -9,6 +9,7 @@
 #include "game/world/ChunkManager.hpp"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -260,6 +261,7 @@ void Renderer::CleanupSwapchain() {
     VkDevice device = m_context->GetDevice();
 
     m_voxelPipeline.Destroy(device);
+    m_translucentPipeline.Destroy(device);
 
     vkDestroyImageView(device, m_depthImageView, nullptr);
     vkDestroyImage(device, m_depthImage, nullptr);
@@ -449,26 +451,52 @@ void Renderer::CreateCommandBuffers() {
 
 void Renderer::CreateVoxelPipeline() {
     VkDevice device = m_context->GetDevice();
- 
-    Shader vert(device, "shaders/voxel.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-    Shader frag(device, "shaders/voxel.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
- 
+
     auto binding = VoxelVertex::BindingDescription();
     auto attributes = VoxelVertex::AttributeDescriptions();
     std::vector<VkVertexInputAttributeDescription> attrVec(attributes.begin(), attributes.end());
- 
-    m_voxelPipeline = GraphicsPipeline::Builder(device, m_renderPass)
-        .AddShaderStage(vert.StageInfo())
-        .AddShaderStage(frag.StageInfo())
-        .SetVertexInput(binding, attrVec)
-        .SetDepthTest(true)
-        .SetCullMode(VK_CULL_MODE_BACK_BIT)
-        .AddPushConstantRange<VoxelPushConstants>(
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
-        )
-        .AddDescriptorSetLayout(m_globalSetLayout)   // set 0: camera
-        .AddDescriptorSetLayout(m_textureSetLayout)  // set 1: atlas
-        .Build();
+    
+    {
+        Shader vert(device, "shaders/voxel.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+        Shader frag(device, "shaders/voxel.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+    
+        m_voxelPipeline = GraphicsPipeline::Builder(device, m_renderPass)
+            .AddShaderStage(vert.StageInfo())
+            .AddShaderStage(frag.StageInfo())
+            .SetVertexInput(binding, attrVec)
+            .SetDepthTest(true)
+            .SetCullMode(VK_CULL_MODE_BACK_BIT)
+            .AddPushConstantRange<VoxelPushConstants>(
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
+            )
+            .AddDescriptorSetLayout(m_globalSetLayout)   // set 0: camera
+            .AddDescriptorSetLayout(m_textureSetLayout)  // set 1: atlas
+            .Build();
+    }
+
+    // Translucent pass: same shaders and vertex layout — only the
+    // fixed-function state differs. Depth WRITE off so translucent
+    // geometry never blocks what's drawn behind it; depth TEST stays
+    // on so it still respects already-drawn opaque geometry (you
+    // can't see glass through a wall). Drawn in a second pass after
+    // every solid chunk — see RecordCommandBuffer.
+    {
+        Shader vert(device, "shaders/voxel.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+        Shader frag(device, "shaders/voxel.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+        m_translucentPipeline = GraphicsPipeline::Builder(device, m_renderPass)
+            .AddShaderStage(vert.StageInfo())
+            .AddShaderStage(frag.StageInfo())
+            .SetVertexInput(binding, attrVec)
+            .SetDepthTest(true, false)           // test ON, write OFF
+            .SetCullMode(VK_CULL_MODE_BACK_BIT)
+            .SetBlending(true)
+            .AddPushConstantRange<VoxelPushConstants>(
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+            .AddDescriptorSetLayout(m_globalSetLayout)
+            .AddDescriptorSetLayout(m_textureSetLayout)
+            .Build();
+    }
 }
 
 void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -535,6 +563,54 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
             vkCmdBindVertexBuffers(cmd, 0, 1, vb, off);
             vkCmdBindIndexBuffer(cmd, chunk->GetIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
             vkCmdDrawIndexed(cmd, chunk->GetIndexCount(), 1, 0, 0, 0);
+        }
+    }
+
+    // Translucent pass — same camera/atlas bindings, different
+    // pipeline. Chunks are sorted back-to-front by distance from the
+    // camera so overlapping translucent geometry (e.g. looking
+    // through two stacked glass panes) blends in the right order.
+    // This is a per-CHUNK sort, not per-face — good enough until you
+    // need correctly sorted translucency *within* a single chunk.
+    if (m_textureDescSet != VK_NULL_HANDLE && m_chunkManager != nullptr) {
+        std::vector<Chunk*> translucentChunks;
+        for (const auto& [coord, chunk] : m_chunkManager->GetChunks())
+            if (chunk->HasTranslucentMesh())
+                translucentChunks.push_back(chunk.get());
+
+        const glm::vec3 camPos = m_lastCameraUBO.cameraPos;
+        auto sqDist = [&](const Chunk* c) {
+            const glm::vec3 center = glm::vec3(c->GetModelMatrix()[3]);
+            const glm::vec3 diff = center - camPos;
+            return glm::dot(diff, diff);
+        };
+        std::sort(translucentChunks.begin(), translucentChunks.end(),
+            [&](const Chunk* a, const Chunk* b) { return sqDist(a) > sqDist(b); }); // far -> near
+
+        if (!translucentChunks.empty()) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_translucentPipeline.GetPipeline());
+
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_translucentPipeline.GetLayout(), 0,
+                1, &m_globalDescSets[m_currentFrame], 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_translucentPipeline.GetLayout(), 1,
+                1, &m_textureDescSet, 0, nullptr);
+
+            for (Chunk* chunk : translucentChunks) {
+                VoxelPushConstants pc{};
+                pc.model = chunk->GetModelMatrix();
+                pc.atlasRows = 1.0f;
+                pc.atlasCols = 1.0f;
+
+                vkCmdPushConstants(cmd, m_translucentPipeline.GetLayout(),
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0, sizeof(VoxelPushConstants), &pc);
+
+                VkBuffer vb[] = { chunk->GetTranslucentVertexBuffer() };
+                VkDeviceSize off[] = { 0 };
+                vkCmdBindVertexBuffers(cmd, 0, 1, vb, off);
+                vkCmdBindIndexBuffer(cmd, chunk->GetTranslucentIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(cmd, chunk->GetTranslucentIndexCount(), 1, 0, 0, 0);
+            }
         }
     }
 
@@ -607,6 +683,7 @@ void Renderer::DrawFrame() {
 
 void Renderer::UpdateCamera(const CameraUBO& camera) {
     memcpy(m_cameraUBOs[m_currentFrame].mappedPtr, &camera, sizeof(CameraUBO));
+    m_lastCameraUBO = camera;
 }
 
 uint32_t Renderer::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {

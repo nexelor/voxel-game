@@ -172,22 +172,20 @@ void ChunkManager::FlushDirty(int camChunkY, VkCommandPool pool, VkQueue queue) 
 void ChunkManager::RebuildMesh(Chunk& chunk, VkCommandPool pool, VkQueue queue) {
     ChunkNeighbors nb = GatherNeighbors(chunk.m_chunkCoord);
 
-    std::vector<VoxelVertex> verts;
-    std::vector<uint32_t>    indices;
-
-    ChunkMesher::Mesh(chunk, nb, verts, indices, 0, CHUNK_SIZE,
+    ChunkMeshData mesh;
+    ChunkMesher::Mesh(chunk, nb, mesh, 0, CHUNK_SIZE,
         static_cast<float>(m_atlasGridCols), static_cast<float>(m_atlasGridRows));
 
     chunk.ClearAllDirty();
-    chunk.UploadMesh(m_context->GetDevice(), m_context->GetPhysicalDevice(),
-        pool, queue, verts, indices);
+    chunk.UploadMesh(m_context->GetDevice(), m_context->GetPhysicalDevice(), pool, queue,
+        mesh.solidVertices, mesh.solidIndices, mesh.translucentVertices, mesh.translucentIndices);
 
     Logger::Log(LogLevel::Info, "World",
         "Meshed (" +
         std::to_string(chunk.m_chunkCoord.x) + "," +
         std::to_string(chunk.m_chunkCoord.z) + ") — " +
-        std::to_string(verts.size()) + " verts, " +
-        std::to_string(indices.size() / 3) + " tris");
+        std::to_string(mesh.solidVertices.size() + mesh.translucentVertices.size()) + " verts, " +
+        std::to_string((mesh.solidIndices.size() + mesh.translucentIndices.size()) / 3) + " tris");
 }
 
 // ─────────────────────────────────────────────
@@ -334,7 +332,7 @@ RaycastResult ChunkManager::Raycast(glm::vec3 origin, glm::vec3 dir, float maxDi
     float dist = 0.f;
 
     while (dist < maxDistance) {
-        if (IsOpaque(GetBlock(voxel))) {
+        if (GetBlock(voxel) != BlockType::Air) {
             result.hit = true;
             result.blockPos = voxel;
             result.faceNormal = lastNormal;

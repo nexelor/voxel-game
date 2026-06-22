@@ -7,14 +7,15 @@
 //
 //  A block is a single uint8 stored inside a
 //  Chunk. 0 = Air (empty). Everything else is
-//  a solid block type.
+//  a block type.
 //
-//  Per-block texture/appearance data (which PNG
-//  each face uses) now lives entirely in
-//  BlockRegistry/BlockDef (game/registry/BlockRegistry.hpp),
-//  resolved against the runtime-built TextureAtlas.
-//  This header only owns the type enum and the
-//  one opacity rule everything else is built on.
+//  This header owns ONLY the type enum. Every
+//  question about how a block looks or behaves
+//  (textures, render layer, whether it occludes
+//  neighbors) lives in BlockRegistry/BlockDef
+//  (game/registry/BlockRegistry.hpp) — kept out
+//  of here on purpose so this header never needs
+//  to depend on the registry.
 // ─────────────────────────────────────────────
  
 enum class BlockType : uint8_t {
@@ -24,8 +25,6 @@ enum class BlockType : uint8_t {
     Stone = 3,
     Sand  = 4,
     Glass  = 5,
+    Leaves = 6,
+    Water = 7,
 };
-
-inline bool IsOpaque(BlockType t) {
-    return t != BlockType::Air;
-}

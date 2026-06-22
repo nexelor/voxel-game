@@ -189,7 +189,7 @@ void Application::HandleBlockInteraction() {
         const glm::ivec3 d = placePos - eyeBlock;
         if (d.x == 0 && (d.y == 0 || d.y == -1) && d.z == 0) return;
 
-        constexpr BlockType placedType = BlockType::Stone;
+        constexpr BlockType placedType = BlockType::Leaves;
         m_chunkManager->SetBlock(placePos, placedType);
 
         EventBus::Get().Publish(BlockPlaceEvent{ placePos, placedType });

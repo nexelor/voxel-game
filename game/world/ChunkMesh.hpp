@@ -37,6 +37,24 @@ struct ChunkNeighbors {
 };
 
 // ─────────────────────────────────────────────
+//  ChunkMeshData
+//
+//  Output of ChunkMesher::Mesh(). Faces are sorted
+//  into two independent buffers by the block's
+//  RenderLayer — "solid" (Opaque+Cutout, drawn first
+//  with depth write on) and "translucent" (drawn
+//  second, blended, depth write off). See Chunk's
+//  UploadMesh() and Renderer's two draw passes.
+// ─────────────────────────────────────────────
+
+struct ChunkMeshData {
+    std::vector<VoxelVertex> solidVertices;
+    std::vector<uint32_t>    solidIndices;
+    std::vector<VoxelVertex> translucentVertices;
+    std::vector<uint32_t>    translucentIndices;
+};
+
+// ─────────────────────────────────────────────
 //  ChunkMesher
 //
 //  Naive face-culled mesher — O(V) where V is
@@ -63,8 +81,7 @@ public:
     static void Mesh(
         const Chunk& chunk,
         const ChunkNeighbors& neighbors,
-        std::vector<VoxelVertex>& outVertices,
-        std::vector<uint32_t>& outIndices,
+        ChunkMeshData& out,
         int yMin,
         int yMax,
         float atlasCols,

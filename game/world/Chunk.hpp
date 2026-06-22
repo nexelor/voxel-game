@@ -48,7 +48,8 @@ public:
     // GPU buffers
     // Call after meshing. device/physDevice needed for memory allocation.
     void UploadMesh(VkDevice device, VkPhysicalDevice physDevice, VkCommandPool pool, VkQueue queue,
-        const std::vector<VoxelVertex>& vertices, const std::vector<uint32_t>& indices);
+        const std::vector<VoxelVertex>& solidVertices, const std::vector<uint32_t>& solidIndices,
+        const std::vector<VoxelVertex>& translucentVertices, const std::vector<uint32_t>& translucentIndices);
 
     void DestroyBuffers(VkDevice device);
 
@@ -57,6 +58,12 @@ public:
     VkBuffer GetIndexBuffer() const { return m_indexBuffer; }
     uint32_t GetIndexCount() const { return m_indexCount; }
     bool HasMesh() const { return m_indexCount > 0 && m_vertexBuffer != VK_NULL_HANDLE; }
+
+    // Translucent draw data — drawn second, blended, depth write off.
+    VkBuffer GetTranslucentVertexBuffer() const { return m_translucentVertexBuffer; }
+    VkBuffer GetTranslucentIndexBuffer() const { return m_translucentIndexBuffer; }
+    uint32_t GetTranslucentIndexCount() const { return m_translucentIndexCount; }
+    bool HasTranslucentMesh() const { return m_translucentIndexCount > 0 && m_translucentVertexBuffer != VK_NULL_HANDLE; }
 
     // World position
     glm::mat4 GetModelMatrix() const;
@@ -71,15 +78,25 @@ private:
  
     std::array<BlockType, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE> m_blocks {};
     
-    // GPU resources
+    // Solid (opaque + cutout)
     VkBuffer       m_vertexBuffer { VK_NULL_HANDLE };
     VkDeviceMemory m_vertexMemory { VK_NULL_HANDLE };
     VkBuffer       m_indexBuffer  { VK_NULL_HANDLE };
     VkDeviceMemory m_indexMemory  { VK_NULL_HANDLE };
     uint32_t       m_indexCount   { 0 };
 
+    // Translucent
+    VkBuffer       m_translucentVertexBuffer { VK_NULL_HANDLE };
+    VkDeviceMemory m_translucentVertexMemory { VK_NULL_HANDLE };
+    VkBuffer       m_translucentIndexBuffer  { VK_NULL_HANDLE };
+    VkDeviceMemory m_translucentIndexMemory  { VK_NULL_HANDLE };
+    uint32_t       m_translucentIndexCount   { 0 };
+
     // Internal buffer helpers
     static uint32_t FindMemoryType(VkPhysicalDevice, uint32_t filter, VkMemoryPropertyFlags);
     static void CreateBuffer(VkDevice, VkPhysicalDevice, VkDeviceSize, VkBufferUsageFlags, VkMemoryPropertyFlags, VkBuffer&, VkDeviceMemory&);
     static void CopyBuffer(VkDevice, VkCommandPool, VkQueue, VkBuffer src, VkBuffer dst, VkDeviceSize);
+    static void UploadSubMesh(VkDevice, VkPhysicalDevice, VkCommandPool, VkQueue,
+        const std::vector<VoxelVertex>&, const std::vector<uint32_t>&,
+        VkBuffer& outVB, VkDeviceMemory& outVBMem, VkBuffer& outIB, VkDeviceMemory& outIBMem, uint32_t& outIndexCount);
 };

@@ -1,56 +1,83 @@
 #pragma once
+
 #include "game/world/Block.hpp"
 #include "engine/renderer/TextureID.hpp"
 #include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
- 
+
 // ─────────────────────────────────────────────
-//  BlockDef
+//  RenderLayer
 //
-//  Content-layer description of a block. Each of the
-//  6 faces (indexed the same way as the mesher's FaceDef
-//  table: 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z) gets its own
-//  TextureID, so blocks like Grass can have a different
-//  texture per face while Stone/Dirt just repeat one
-//  TextureID across all 6.
+//  Which draw pass (and pipeline) a block's faces
+//  go into. The mesher sorts every face into one
+//  of two GPU buffers per chunk based on this:
 //
-//  TextureIDs are resolved to atlas tile coordinates once,
-//  after TextureAtlas::Build() runs — see
-//  BlockRegistry::ResolveAtlasCoords().
+//    Opaque / Cutout  → "solid" buffer  → m_voxelPipeline
+//                        (depth write ON, no blending —
+//                        Cutout just relies on the frag
+//                        shader's existing alpha-discard,
+//                        e.g. leaves)
+//    Translucent      → "translucent" buffer → m_translucentPipeline
+//                        (depth write OFF, blending ON,
+//                        drawn after every solid chunk,
+//                        e.g. glass/water)
+//
+//  Opaque and Cutout share a pipeline because the only
+//  difference between them is a shader-side alpha
+//  discard that already runs unconditionally — there's
+//  no GPU fixed-function state that needs to differ.
 // ─────────────────────────────────────────────
- 
+
+enum class RenderLayer : uint8_t {
+    Opaque,
+    Cutout,
+    Translucent,
+};
+
 struct BlockDef {
     const char* name = "";
     std::array<TextureID, 6> faceTextures{};
-    bool opaque = false;
- 
+    RenderLayer renderLayer = RenderLayer::Opaque;
+
+    // Does this block occupy the full block volume and therefore
+    // hide any neighbor face that touches it, regardless of how
+    // transparent it LOOKS? True for every block right now (incl.
+    // Glass/Leaves — a glass cube still fully blocks the stone face
+    // behind it, exactly like vanilla). Only Air sets this false.
+    // A future non-cube block (slabs, crops, a half-height liquid)
+    // would also set this false — this flag is that extension point.
+    bool occludes = true;
+
     // Resolved by ResolveAtlasCoords() after the atlas is built.
-    // (col, row) per face, in atlas tile units.
     std::array<std::pair<uint32_t, uint32_t>, 6> faceAtlasCoords{};
 };
 
 // Convenience builders for the common cases, used by content registration code.
 namespace BlockDefBuilder {
     // Every face uses the same texture (Stone, Dirt, Sand, ...)
-    inline BlockDef Uniform(const char* name, const TextureID& tex, bool opaque) {
+    inline BlockDef Uniform(const char* name, const TextureID& tex,
+        RenderLayer layer = RenderLayer::Opaque, bool occludes = true)
+    {
         BlockDef def;
         def.name = name;
         def.faceTextures.fill(tex);
-        def.opaque = opaque;
+        def.renderLayer = layer;
+        def.occludes = occludes;
         return def;
     }
  
     // Top / side / bottom distinct (Grass, ...).
-    // Face order matches ChunkMesher::FACES: 0=+X 1=-X 2=+Y(top) 3=-Y(bottom) 4=+Z 5=-Z
     inline BlockDef TopSideBottom(const char* name, const TextureID& top,
-        const TextureID& side, const TextureID& bottom, bool opaque)
+        const TextureID& side, const TextureID& bottom,
+        RenderLayer layer = RenderLayer::Opaque, bool occludes = true)
     {
         BlockDef def;
         def.name = name;
         def.faceTextures = { side, side, top, bottom, side, side };
-        def.opaque = opaque;
+        def.renderLayer = layer;
+        def.occludes = occludes;
         return def;
     }
 }
@@ -70,10 +97,6 @@ public:
         return m_defs[static_cast<uint8_t>(type)];
     }
 
-    // Returns every distinct TextureID referenced by any registered block.
-    // Called once at startup so TextureAtlas knows exactly which PNGs it
-    // needs to load/pack — adding a new block automatically pulls its
-    // textures into the atlas with no separate registration step.
     std::vector<TextureID> CollectRequiredTextures() const {
         std::vector<TextureID> result;
         for (const auto& def : m_defs) {
@@ -90,11 +113,6 @@ public:
         return result;
     }
 
-    // Called once after TextureAtlas::Build(). Looks up the atlas tile
-    // coordinate for every face's TextureID and caches it directly on
-    // the BlockDef so the mesher does zero string/hash lookups per-face
-    // during chunk meshing (it was already doing a flat array index
-    // before this change — this preserves that performance property).
     template <typename AtlasCoordLookupFn>
     void ResolveAtlasCoords(AtlasCoordLookupFn&& lookup) {
         for (auto& def : m_defs) {
@@ -108,3 +126,40 @@ public:
 private:
     std::array<BlockDef, 256> m_defs{};
 };
+
+// ─────────────────────────────────────────────
+//  Mesher-facing helpers
+//
+//  These are the two questions ChunkMesher actually
+//  asks. Kept here (not in Block.hpp) since both need
+//  registry data.
+// ─────────────────────────────────────────────
+
+// True if `neighbor` fully hides any face of `current` touching it.
+//   1. neighbor is Air                → never
+//   2. neighbor's layer is Opaque     → always (a solid block fully
+//                                        blocks any face behind it)
+//   3. neighbor == current block type → cull the shared internal
+//                                        face (stops double-blended
+//                                        seams between two glass/
+//                                        water/leaf blocks — same
+//                                        trick vanilla Minecraft uses)
+//   Anything else (two DIFFERENT translucent/cutout blocks touching,
+//   e.g. glass against leaves) renders both faces — correct, since
+//   two different see-through materials should both be visible.
+inline bool FaceHidden(BlockType current, BlockType neighbor) {
+    if (neighbor == BlockType::Air) return false;
+
+    const BlockDef& neighborDef = BlockRegistry::Get().Lookup(neighbor);
+    if (neighborDef.renderLayer == RenderLayer::Opaque) return true;
+
+    return neighbor == current;
+}
+
+// Whether `neighbor` should darken a corner for ambient occlusion.
+// AO is meant to shade corners against solid geometry — letting
+// glass/leaves/water contribute would shade a corner next to a
+// window or a tree as if it were stone. Only Opaque blocks count.
+inline bool ContributesToAO(BlockType neighbor) {
+    return BlockRegistry::Get().Lookup(neighbor).renderLayer == RenderLayer::Opaque;
+}
