@@ -8,6 +8,7 @@
 #include "engine/ui/UIRenderer.hpp"
 #include "game/events/GameEvents.hpp"
 #include "game/registry/BlockRegistry.hpp"
+#include "game/world/ChunkManager.hpp"
 #include <GLFW/glfw3.h>
 
 // Root directory the TextureAtlas scans for block textures, relative to
@@ -120,6 +121,13 @@ void Application::Update() {
         static_cast<float>(m_window->GetHeight());
     m_renderer->UpdateCamera(m_camera->GetUBO(aspect));
 
+    // Raycast every frame for selection highlight and block interaction
+    m_selectionResult = m_chunkManager->Raycast(
+        m_camera->GetPosition(),
+        m_camera->GetFront(),
+        /*maxDistance=*/5.f);
+    m_renderer->SetSelectedBlock(m_selectionResult.blockPos, m_selectionResult.hit);
+
     // Block interaction (break / place)
     HandleBlockInteraction();
 
@@ -156,13 +164,9 @@ void Application::HandleBlockInteraction() {
     const bool placePressed = m_input->WasActionPressed(InputAction::PlaceBlock);
 
     if (!breakPressed && !placePressed) return;
- 
-    // Cast a ray from the camera eye along the view direction
-    const RaycastResult hit = m_chunkManager->Raycast(
-        m_camera->GetPosition(),
-        m_camera->GetFront(),
-        /*maxDistance=*/10.f);
- 
+    
+    // Reuse the per-frame raycast result computed in Update()
+    const RaycastResult& hit = m_selectionResult;
     if (!hit.hit) return;
 
     if (breakPressed) {

@@ -34,6 +34,7 @@ void Renderer::Init() {
     m_ui = std::make_unique<UIRenderer>(m_context, m_renderPass, m_commandPool);
     m_ui->Init();
 
+    CreateSelectionBuffers();
     CreateSyncObjects();
 
     Logger::Log(LogLevel::Info, "Renderer", "Renderer initialized");
@@ -49,6 +50,7 @@ void Renderer::Cleanup() {
     }
 
     DestroySyncObjects();
+    DestroySelectionBuffers();
     CleanupSwapchain();
     if (m_descriptorPool != VK_NULL_HANDLE)
         vkDestroyDescriptorPool(device, m_descriptorPool, nullptr);
@@ -256,6 +258,7 @@ void Renderer::CreateSwapchainResources() {
     CreateFramebuffers();
     CreateCommandBuffers();
     CreateVoxelPipeline();
+    CreateSelectionPipeline();
 }
 
 void Renderer::CleanupSwapchain() {
@@ -263,6 +266,7 @@ void Renderer::CleanupSwapchain() {
 
     m_voxelPipeline.Destroy(device);
     m_translucentPipeline.Destroy(device);
+    m_selectionPipeline.Destroy(device);
 
     vkDestroyImageView(device, m_depthImageView, nullptr);
     vkDestroyImage(device, m_depthImage, nullptr);
@@ -500,6 +504,98 @@ void Renderer::CreateVoxelPipeline() {
     }
 }
 
+void Renderer::CreateSelectionPipeline() {
+    VkDevice device = m_context->GetDevice();
+
+    VkVertexInputBindingDescription binding{};
+    binding.binding   = 0;
+    binding.stride    = sizeof(glm::vec3);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription attr{};
+    attr.binding  = 0;
+    attr.location = 0;
+    attr.format   = VK_FORMAT_R32G32B32_SFLOAT;
+    attr.offset   = 0;
+    std::vector<VkVertexInputAttributeDescription> attrs = { attr };
+
+    Shader vert(device, "shaders/selection.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+    Shader frag(device, "shaders/selection.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    m_selectionPipeline = GraphicsPipeline::Builder(device, m_renderPass)
+        .AddShaderStage(vert.StageInfo())
+        .AddShaderStage(frag.StageInfo())
+        .SetVertexInput(binding, attrs)
+        .SetTopology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
+        .SetDepthTest(true, false, VK_COMPARE_OP_LESS_OR_EQUAL)
+        .SetCullMode(VK_CULL_MODE_NONE)
+        .SetBlending(true)
+        .AddPushConstantRange<SelectionPushConstants>(VK_SHADER_STAGE_VERTEX_BIT)
+        .AddDescriptorSetLayout(m_globalSetLayout)
+        .Build();
+}
+
+void Renderer::CreateSelectionBuffers() {
+    // Wireframe cube expanded by E on all sides to avoid z-fighting
+    const float E = 0.003f;
+
+    const std::array<glm::vec3, 8> verts = {{
+        { -E,   -E,   -E  },  // 0
+        { 1+E,  -E,   -E  },  // 1
+        { 1+E,  1+E,  -E  },  // 2
+        { -E,   1+E,  -E  },  // 3
+        { -E,   -E,   1+E },  // 4
+        { 1+E,  -E,   1+E },  // 5
+        { 1+E,  1+E,  1+E },  // 6
+        { -E,   1+E,  1+E },  // 7
+    }};
+
+    const std::array<uint16_t, 24> indices = {{
+        0,1,  1,2,  2,3,  3,0,   // bottom face
+        4,5,  5,6,  6,7,  7,4,   // top face
+        0,4,  1,5,  2,6,  3,7,   // vertical edges
+    }};
+
+    m_selectionIndexCount = static_cast<uint32_t>(indices.size());
+
+    VkDevice device = m_context->GetDevice();
+
+    // Vertex buffer
+    VkDeviceSize vbSize = sizeof(verts);
+    CreateBuffer(vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        m_selectionVertexBuffer, m_selectionVertexMemory);
+    void* data;
+    vkMapMemory(device, m_selectionVertexMemory, 0, vbSize, 0, &data);
+    memcpy(data, verts.data(), vbSize);
+    vkUnmapMemory(device, m_selectionVertexMemory);
+
+    // Index buffer (uint16)
+    VkDeviceSize ibSize = sizeof(indices);
+    CreateBuffer(ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        m_selectionIndexBuffer, m_selectionIndexMemory);
+    vkMapMemory(device, m_selectionIndexMemory, 0, ibSize, 0, &data);
+    memcpy(data, indices.data(), ibSize);
+    vkUnmapMemory(device, m_selectionIndexMemory);
+}
+
+void Renderer::DestroySelectionBuffers() {
+    VkDevice device = m_context->GetDevice();
+    if (m_selectionVertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, m_selectionVertexBuffer, nullptr);
+        vkFreeMemory(device, m_selectionVertexMemory, nullptr);
+        m_selectionVertexBuffer = VK_NULL_HANDLE;
+        m_selectionVertexMemory = VK_NULL_HANDLE;
+    }
+    if (m_selectionIndexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, m_selectionIndexBuffer, nullptr);
+        vkFreeMemory(device, m_selectionIndexMemory, nullptr);
+        m_selectionIndexBuffer = VK_NULL_HANDLE;
+        m_selectionIndexMemory = VK_NULL_HANDLE;
+    }
+}
+
 void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -613,6 +709,28 @@ void Renderer::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
                 vkCmdDrawIndexed(cmd, chunk->GetTranslucentIndexCount(), 1, 0, 0, 0);
             }
         }
+    }
+
+    // Selection highlight — draw wireframe cube around the targeted block
+    if (m_hasSelection && m_selectionPipeline.IsValid()) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_selectionPipeline.GetPipeline());
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_selectionPipeline.GetLayout(), 0, 1, &m_globalDescSets[m_currentFrame], 0, nullptr);
+
+        SelectionPushConstants pc{};
+        pc.blockPos = glm::vec4(
+            static_cast<float>(m_selectedBlockPos.x),
+            static_cast<float>(m_selectedBlockPos.y),
+            static_cast<float>(m_selectedBlockPos.z),
+            0.0f);
+        vkCmdPushConstants(cmd, m_selectionPipeline.GetLayout(),
+            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SelectionPushConstants), &pc);
+
+        VkBuffer vb[] = { m_selectionVertexBuffer };
+        VkDeviceSize off[] = { 0 };
+        vkCmdBindVertexBuffers(cmd, 0, 1, vb, off);
+        vkCmdBindIndexBuffer(cmd, m_selectionIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(cmd, m_selectionIndexCount, 1, 0, 0, 0);
     }
 
     if (m_ui)

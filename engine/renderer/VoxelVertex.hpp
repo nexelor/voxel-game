@@ -73,5 +73,9 @@ struct VoxelPushConstants {
     float     atlasCols;    // 4  bytes - number of tile columns in texture atlas
     float     _pad[2];      // 8  bytes  padding to 80 bytes total
 };
-
 static_assert(sizeof(VoxelPushConstants) <= 128, "VoxelPushConstants exceeds guaranteed Vulkan push constant space");
+
+struct SelectionPushConstants {
+    glm::vec4 blockPos;
+};
+static_assert(sizeof(SelectionPushConstants) <= 128, "SelectionPushConstants exceeds guaranteed Vulkan push constant space");

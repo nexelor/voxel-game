@@ -56,6 +56,10 @@ public:
     void BindTextureAtlas(VkDescriptorSet atlasSet) { m_textureDescSet = atlasSet; }
 
     void SetChunkManager(ChunkManager* cm) { m_chunkManager = cm; }
+    void SetSelectedBlock(glm::ivec3 pos, bool hasSelection) {
+        m_selectedBlockPos = pos;
+        m_hasSelection = hasSelection;
+    }
 
 private:
     // Persistent (survive swapchain recreation)
@@ -82,6 +86,9 @@ private:
     void CreateFramebuffers();
     void CreateCommandBuffers();
     void CreateVoxelPipeline();
+    void CreateSelectionPipeline();
+    void CreateSelectionBuffers();
+    void DestroySelectionBuffers();
 
     // Per-frame recording
     void RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
@@ -119,6 +126,17 @@ private:
     // Pipeline
     GraphicsPipeline m_voxelPipeline;
     GraphicsPipeline m_translucentPipeline;
+    GraphicsPipeline m_selectionPipeline;
+
+    // Selection highlight geometry (static unit cube wireframe)
+    VkBuffer       m_selectionVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory m_selectionVertexMemory = VK_NULL_HANDLE;
+    VkBuffer       m_selectionIndexBuffer  = VK_NULL_HANDLE;
+    VkDeviceMemory m_selectionIndexMemory  = VK_NULL_HANDLE;
+    uint32_t       m_selectionIndexCount   = 0;
+
+    bool       m_hasSelection      = false;
+    glm::ivec3 m_selectedBlockPos  {};
 
     // Descriptor infrastructure
     VkDescriptorSetLayout m_globalSetLayout = VK_NULL_HANDLE;

@@ -37,9 +37,7 @@ private:
     DebugOverlay m_debugOverlay;
     bool m_running = false;
 
-    // Edge-detection: only act on the press, not every frame held
-    // bool m_leftWasDown = false;
-    // bool m_rightWasDown = false;
+    RaycastResult m_selectionResult;
 
     // How many chunks in XZ to keep loaded around the camera
     static constexpr int VIEW_RADIUS = 6;
