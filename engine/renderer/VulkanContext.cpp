@@ -3,8 +3,8 @@
 
 #include <GLFW/glfw3.h>
 #include <cstring>
-#include <iostream>
 #include <set>
+#include <stdexcept>
 
 VulkanContext::VulkanContext(Window* window) : m_window(window) {}
 VulkanContext::~VulkanContext() { Cleanup(); }
@@ -109,12 +109,14 @@ bool VulkanContext::CheckValidationLayerSupport() {
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT _,
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     VkDebugUtilsMessageTypeFlagsEXT,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void*
 ) {
-    std::cerr << "[VULKAN] " << pCallbackData->pMessage << std::endl;
+    const LogLevel level = (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        ? LogLevel::Error : LogLevel::Warning;
+    Logger::Log(level, "Vulkan", pCallbackData->pMessage);
     return VK_FALSE;
 }
 

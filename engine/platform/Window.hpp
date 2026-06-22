@@ -12,7 +12,7 @@ public:
 
     void PollEvent();
 
-    bool ShoudClose() const;
+    bool ShouldClose() const;
 
     int GetWidth() const;
     int GetHeight() const;

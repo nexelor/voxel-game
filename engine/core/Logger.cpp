@@ -87,7 +87,7 @@ const char* Logger::GetLevelColor(LogLevel level) {
             return "\033[32m";
 
         case LogLevel::Warning:
-            return "\033[32m";
+            return "\033[33m";
 
         case LogLevel::Error:
             return "\033[31m";

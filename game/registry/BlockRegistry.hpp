@@ -4,6 +4,7 @@
 #include "engine/renderer/TextureID.hpp"
 #include <array>
 #include <cstdint>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -98,16 +99,14 @@ public:
     }
 
     std::vector<TextureID> CollectRequiredTextures() const {
+        std::unordered_set<TextureID, TextureIDHash> seen;
         std::vector<TextureID> result;
         for (const auto& def : m_defs) {
             if (def.name == nullptr || def.name[0] == '\0') continue;
             for (const auto& tex : def.faceTextures) {
                 if (tex.name.empty()) continue;
-                bool dup = false;
-                for (const auto& existing : result) {
-                    if (existing == tex) { dup = true; break; }
-                }
-                if (!dup) result.push_back(tex);
+                if (seen.insert(tex).second)
+                    result.push_back(tex);
             }
         }
         return result;

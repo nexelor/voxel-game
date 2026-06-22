@@ -75,7 +75,7 @@ bool Application::Initialize() {
 
 void Application::Run() {
     Logger::Log(LogLevel::Info, "Core", "Entering main loop");
-    while (m_running && !m_window->ShoudClose()) {
+    while (m_running && !m_window->ShouldClose()) {
         m_window->PollEvent();
         m_timer.Update();
         Update();
@@ -209,19 +209,15 @@ void Application::RegisterEventListeners() {
     m_blockBreakListenerID = EventBus::Get().Subscribe<BlockBreakEvent>(
         [](const BlockBreakEvent& e) {
             Logger::Log(LogLevel::Info, "World",
-                "Broke block at (" +
-                std::to_string(e.position.x) + "," +
-                std::to_string(e.position.y) + "," +
-                std::to_string(e.position.z) + ")");
+                std::format("Broke block at ({},{},{})",
+                    e.position.x, e.position.y, e.position.z));
         });
 
     m_blockPlaceListenerID = EventBus::Get().Subscribe<BlockPlaceEvent>(
         [](const BlockPlaceEvent& e) {
             Logger::Log(LogLevel::Info, "World",
-                "Placed block at (" +
-                std::to_string(e.position.x) + "," +
-                std::to_string(e.position.y) + "," +
-                std::to_string(e.position.z) + ")");
+                std::format("Placed block at ({},{},{})",
+                    e.position.x, e.position.y, e.position.z));
         });
 }
 

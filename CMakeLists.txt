@@ -47,6 +47,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(voxel_game PRIVATE -Werror)
+endif()
+
 # ─────────────────────────────────────────────
 #  Shader compilation (custom target, not part
 #  of the default build — run manually or hook

@@ -138,7 +138,8 @@ void Renderer::CreateCameraUBOs() {
     for (auto& ubo : m_cameraUBOs) {
         CreateBuffer(bufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubo.buffer, ubo.memory);
-        vkMapMemory(m_context->GetDevice(), ubo.memory, 0, bufSize, 0, &ubo.mappedPtr);
+        if (vkMapMemory(m_context->GetDevice(), ubo.memory, 0, bufSize, 0, &ubo.mappedPtr) != VK_SUCCESS)
+            throw std::runtime_error("Failed to map camero UBO memory");
     }
 }
 

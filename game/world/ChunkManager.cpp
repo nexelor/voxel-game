@@ -6,6 +6,7 @@
 #include "game/world/ChunkMesh.hpp"
 #include <algorithm>
 #include <cstdlib>
+#include <format>
 
 static constexpr int VERTICAL_RENDER_DISTANCE = 3; // slabs above/below camera chunk
 
@@ -148,7 +149,7 @@ void ChunkManager::Update(glm::vec3 cameraWorldPos, int viewRadiusXZ, VkCommandP
             m_chunks.erase(coord);
         }
         Logger::Log(LogLevel::Info, "World",
-            "Unloaded " + std::to_string(toRemove.size()) + " chunk(s)");
+            std::format("Unloaded {} chunk(s)", toRemove.size()));
     }
 
     FlushDirty(camChunkY, pool, queue);
@@ -181,11 +182,10 @@ void ChunkManager::RebuildMesh(Chunk& chunk, VkCommandPool pool, VkQueue queue) 
         mesh.solidVertices, mesh.solidIndices, mesh.translucentVertices, mesh.translucentIndices);
 
     Logger::Log(LogLevel::Info, "World",
-        "Meshed (" +
-        std::to_string(chunk.m_chunkCoord.x) + "," +
-        std::to_string(chunk.m_chunkCoord.z) + ") — " +
-        std::to_string(mesh.solidVertices.size() + mesh.translucentVertices.size()) + " verts, " +
-        std::to_string((mesh.solidIndices.size() + mesh.translucentIndices.size()) / 3) + " tris");
+        std::format("Meshed ({},{}) — {} verts, {} tris",
+            chunk.m_chunkCoord.x, chunk.m_chunkCoord.z,
+            mesh.solidVertices.size() + mesh.translucentVertices.size(),
+            (mesh.solidIndices.size() + mesh.translucentIndices.size()) / 3));
 }
 
 // ─────────────────────────────────────────────

@@ -79,7 +79,8 @@ void Chunk::CopyBuffer(VkDevice device, VkCommandPool pool, VkQueue queue, VkBuf
     allocInfo.commandBufferCount = 1;
  
     VkCommandBuffer cmd;
-    vkAllocateCommandBuffers(device, &allocInfo, &cmd);
+    if (vkAllocateCommandBuffers(device, &allocInfo, &cmd) != VK_SUCCESS)
+        throw std::runtime_error("Chunk: failed to allocate transfer command buffer");
  
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -118,41 +119,6 @@ void Chunk::UploadMesh(VkDevice device, VkPhysicalDevice physDevice, VkCommandPo
     UploadSubMesh(device, physDevice, pool, queue, translucentVertices, translucentIndices,
         m_translucentVertexBuffer, m_translucentVertexMemory,
         m_translucentIndexBuffer, m_translucentIndexMemory, m_translucentIndexCount);
-
-    // if (vertices.empty() || indices.empty()) {
-    //     m_indexCount = 0;
-    //     return;
-    // }
-
-    // auto uploadBuffer = [&](VkDeviceSize size, const void* data,
-    //     VkBufferUsageFlags dstUsage, VkBuffer& outBuf, VkDeviceMemory& outMem)
-    // {
-    //     VkBuffer staging;
-    //     VkDeviceMemory stagingMem;
-    //     CreateBuffer(device, physDevice, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    //         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-    //         staging, stagingMem);
- 
-    //     void* ptr;
-    //     vkMapMemory(device, stagingMem, 0, size, 0, &ptr);
-    //     memcpy(ptr, data, static_cast<size_t>(size));
-    //     vkUnmapMemory(device, stagingMem);
- 
-    //     CreateBuffer(device, physDevice, size, dstUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    //         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outBuf, outMem);
- 
-    //     CopyBuffer(device, pool, queue, staging, outBuf, size);
-    //     vkDestroyBuffer(device, staging, nullptr);
-    //     vkFreeMemory(device, stagingMem, nullptr);
-    // };
-
-    // uploadBuffer(sizeof(VoxelVertex) * vertices.size(), vertices.data(),
-    //     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_vertexBuffer, m_vertexMemory);
- 
-    // uploadBuffer(sizeof(uint32_t) * indices.size(), indices.data(),
-    //     VK_BUFFER_USAGE_INDEX_BUFFER_BIT, m_indexBuffer, m_indexMemory);
- 
-    // m_indexCount = static_cast<uint32_t>(indices.size());
 }
 
 // Shared staging->device-local upload logic, now parameterized so it can
@@ -177,7 +143,8 @@ void Chunk::UploadSubMesh(VkDevice device, VkPhysicalDevice physDevice, VkComman
             staging, stagingMem);
 
         void* ptr;
-        vkMapMemory(device, stagingMem, 0, size, 0, &ptr);
+        if (vkMapMemory(device, stagingMem, 0, size, 0, &ptr) != VK_SUCCESS)
+            throw std::runtime_error("Chunk: failed to map staging buffer memory");
         memcpy(ptr, data, static_cast<size_t>(size));
         vkUnmapMemory(device, stagingMem);
 
@@ -197,22 +164,6 @@ void Chunk::UploadSubMesh(VkDevice device, VkPhysicalDevice physDevice, VkComman
 
     outIndexCount = static_cast<uint32_t>(indices.size());
 }
-
-// void Chunk::DestroyBuffers(VkDevice device) {
-//     if (m_vertexBuffer != VK_NULL_HANDLE) {
-//         vkDestroyBuffer(device, m_vertexBuffer, nullptr);
-//         vkFreeMemory(device, m_vertexMemory, nullptr);
-//         m_vertexBuffer = VK_NULL_HANDLE;
-//         m_vertexMemory = VK_NULL_HANDLE;
-//     }
-//     if (m_indexBuffer != VK_NULL_HANDLE) {
-//         vkDestroyBuffer(device, m_indexBuffer, nullptr);
-//         vkFreeMemory(device, m_indexMemory, nullptr);
-//         m_indexBuffer = VK_NULL_HANDLE;
-//         m_indexMemory = VK_NULL_HANDLE;
-//     }
-//     m_indexCount = 0;
-// }
 
 void Chunk::DestroyBuffers(VkDevice device) {
     auto destroy = [&](VkBuffer& buf, VkDeviceMemory& mem) {
