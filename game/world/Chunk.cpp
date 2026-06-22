@@ -110,7 +110,10 @@ void Chunk::UploadMesh(VkDevice device, VkPhysicalDevice physDevice, VkCommandPo
     const std::vector<VoxelVertex>& solidVertices, const std::vector<uint32_t>& solidIndices,
     const std::vector<VoxelVertex>& translucentVertices, const std::vector<uint32_t>& translucentIndices)
 {
-    // Destroy old buffers first
+    // Wait for the GPU to finish reading the old buffers before destroying them.
+    // MAX_FRAMES_IN_FLIGHT = 2, so a previous frame's command buffer may still
+    // be referencing them.
+    vkQueueWaitIdle(queue);
     DestroyBuffers(device);
 
     UploadSubMesh(device, physDevice, pool, queue, solidVertices, solidIndices,
