@@ -84,9 +84,18 @@ private:
 
     std::vector<DecodedImage> LoadAll(const std::string& textureRootDir,
         const std::vector<TextureID>& required, uint32_t& outTileSize) const;
- 
+
+    // Cache helpers — cache/atlas.bin stores packed pixels + metadata keyed by
+    // an FNV-1a hash of sorted input PNG file contents.
+    uint64_t ComputeInputHash(const std::string& textureRootDir, const std::vector<TextureID>& required) const;
+    bool TryLoadCache(const std::string& cachePath, uint64_t expectedHash, std::vector<uint8_t>& outPixels);
+    void TrySaveCache(const std::string& cachePath, uint64_t hash, const std::vector<uint8_t>& pixels) const;
+
+    // Stages atlasPixels CPU buffer to a new device-local VkImage.
+    void UploadPixels(const std::vector<uint8_t>& pixels, uint32_t atlasWm, uint32_t atlasH);
+
     void CreateSampler();
- 
+
     static uint32_t FindMemoryType(VkPhysicalDevice physDevice, uint32_t typeFilter, VkMemoryPropertyFlags props);
     static uint32_t NextPowerOfTwo(uint32_t v);
 
@@ -94,7 +103,7 @@ private:
     // tileSize*tileSize*4 bytes — used in place of any texture that's
     // missing, fails to decode, or mismatches the atlas's locked tile size.
     static std::vector<uint8_t> MakeMissingTexture(uint32_t tileSize);
- 
+
     VulkanContext* m_context = nullptr;
     VkCommandPool m_pool = VK_NULL_HANDLE;
 
@@ -102,10 +111,10 @@ private:
     VkDeviceMemory m_memory = VK_NULL_HANDLE;
     VkImageView m_imageView = VK_NULL_HANDLE;
     VkSampler m_sampler = VK_NULL_HANDLE;
- 
+
     uint32_t m_tileSize = 0;   // pixels per tile edge (e.g. 16)
     uint32_t m_gridCols = 0;   // tiles per row
     uint32_t m_gridRows = 0;   // tile rows
- 
+
     std::unordered_map<TextureID, std::pair<uint32_t, uint32_t>, TextureIDHash> m_tileCoords;
 };
